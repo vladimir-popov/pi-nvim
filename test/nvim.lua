@@ -46,7 +46,7 @@ vim.notify = function(message, level)
 end
 
 local placement = (mode == "horizontal" or mode == "vertical") and mode or "tab"
-require("pi").setup({
+require("pi-nvim").setup({
 	command = { vim.fn.exepath("node"), "--experimental-strip-types", root .. "/test/fake-pi.ts" },
 	connection_timeout = mode == "no-connect" and 100 or 3000,
 	placement = placement,

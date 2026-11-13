@@ -1,42 +1,67 @@
 # pi-nvim
 
-[![Pi and Neovim](assets/pi-nvim.png)](assets/pi-nvim.png)
+<p align="center">
+  <img src="assets/pi-nvim.png" alt="Pi running in Neovim" height="300" />
+</p>
 
-A Neovim plugin and Pi extension that connect Neovim to an interactive Pi session. The plugin provides the `:Pi` command and communicates with the extension over a local Unix-domain socket.
-
-Project: [vladimir-popov](https://github.com/vladimir-popov)
+**Keep Pi close while you code.** `pi-nvim` connects Neovim to
+[Pi](https://pi.dev/) with a managed terminal and a lightweight companion
+extension, just a simple bridge between your editor and your AI session. Send
+selected text to Pi as context. One command to bring Pi into your workflow.
 
 ## Requirements
 
-- Neovim with Lua support and Unix-domain socket support.
-- [Pi](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent) installed and available as `pi` on `PATH`, unless configured with a different command.
-- The Pi extension is loaded by the plugin from this repository; no separate extension installation is needed.
+- Neovim 0.10 or newer.
+- Pi installed and available as `pi` on `PATH`, or a custom Pi command configured below.
+- The `pi-nvim` companion extension loaded by Pi. The extension uses Pi's interactive editor API.
 
-## Installation
+## Installation and setup
 
-Check out this repository and add its local path to your Neovim plugin manager. For example, with lazy.nvim:
+### Install with Neovim's built-in package support
+
+Clone the repository into Neovim's `start` package directory so it is loaded automatically:
+
+```sh
+mkdir -p ~/.local/share/nvim/site/pack/plugins/start
+git clone https://github.com/vladimir-popov/pi-nvim \\
+  ~/.local/share/nvim/site/pack/plugins/start/pi-nvim
+```
+
+If Neovim uses a custom data directory, put the repository under that directory's `site/pack/plugins/start/` instead.
+
+Add the setup call to your `init.lua`:
+
+```lua
+require("pi-nvim").setup()
+```
+
+### Install with lazy.nvim
+
+Add this plugin specification to your lazy.nvim setup:
 
 ```lua
 {
-  dir = "/path/to/pi-nvim",
-  config = function()
-    require("pi").setup()
-  end,
+    "vladimir-popov/pi-nvim",
+    keys = {
+        { "<leader>pi", "<cmd>Pi<cr>", desc = "Open or focus Pi" },
+        { "<leader>pi", "<C-\\><C-n><cmd>Pi<cr>", mode = "t", desc = "Return from Pi" },
+        { "<leader>pi", ":<C-U>'<,'>Pi<CR>", mode = "x", desc = "Send selection to Pi" },
+    }
 }
 ```
 
-Replace `"/path/to/pi-nvim"` with the directory where you checked out the project.
-
 ## Configuration
 
-Call `require("pi").setup()` from your Neovim configuration. All options are optional:
+### Configure the neovim plugin
+
+Call `require("pi-nvim").setup()` from your Neovim configuration. All options are optional:
 
 ```lua
-require("pi").setup({
+require("pi-nvim").setup({
   command = "pi",
   placement = "tab",
-  width = 80,
-  height = 80,
+  width = 50,
+  height = 50,
   -- provider = "anthropic",
   -- model = "claude-sonnet-4",
 })
@@ -48,11 +73,32 @@ require("pi").setup({
 | `provider`           | unset   | Optional provider passed to Pi at startup. Requires `model`.                 |
 | `model`              | unset   | Optional model passed to Pi at startup. May be set without `provider`.       |
 | `placement`          | `"tab"` | Pi window placement: `"tab"`, `"horizontal"`, `"vertical"`, or `"float"`.    |
-| `width`              | `80`    | Width percentage for vertical splits and floating windows.                   |
-| `height`             | `80`    | Height percentage for horizontal splits and floating windows.                |
+| `width`              | `50`    | Width percentage for vertical splits and floating windows.                    |
+| `height`             | `50`    | Height percentage for horizontal splits and floating windows.                |
 | `connection_timeout` | `5000`  | Milliseconds to wait for the Pi extension to connect.                        |
 
 Provider and model settings apply only when starting Pi. If either is also included in `command`, the plugin omits that duplicate option when the corresponding setting is configured. Split dimensions are percentages of the window from which Pi is opened; floating-window dimensions are percentages of the editor.
+
+
+### Configure the Pi extension
+
+To enable the companion extension, add its entry point to the `extensions` list in `~/.pi/agent/settings.json`. Use the
+path where your plugin manager installed the repository. For example, with the default install locations:
+
+- Built-in package support: `~/.local/share/nvim/site/pack/plugins/start/pi-nvim/pi/extension.js`
+- lazy.nvim: `~/.local/share/nvim/lazy/pi-nvim/pi/extension.js`
+
+```json
+{
+  "extensions": [
+    "~/.local/share/nvim/lazy/pi-nvim/pi/extension.js"
+  ]
+}
+```
+
+Choose the path matching your installation and merge the entry into an existing `extensions` list rather than replacing
+other configured extensions. If you customized Neovim's data directory or lazy.nvim's install directory, use the
+corresponding path instead. Pi loads this project's extension from `pi/extension.js`.
 
 ## Usage
 

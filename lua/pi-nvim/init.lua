@@ -4,8 +4,8 @@ local defaults = {
 	provider = nil,
 	model = nil,
 	placement = "tab",
-	width = 80,
-	height = 80,
+	width = 50,
+	height = 50,
 	connection_timeout = 5000,
 }
 local state = {
