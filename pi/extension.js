@@ -46,7 +46,16 @@ export function createRequestHandler(pi, getContext) {
       const editorText = context.ui.getEditorText();
       if (typeof editorText !== "string")
         throw new Error("Pi input editor is unavailable");
-      context.ui.pasteToEditor(request.text);
+      const source = selection.path !== null
+        ? `file "${selection.path}"`
+        : `virtual buffer "${selection.buffer_name}"`;
+      const kind = {
+        character: "character-wise",
+        line: "line-wise",
+        block: "block-wise",
+      }[selection.selection_type];
+      const hint = `[Source: ${source}; lines ${selection.start_line}-${selection.end_line}, columns ${selection.start_col}-${selection.end_col}; ${kind} selection]`;
+      context.ui.pasteToEditor(`${hint}\n${request.text}`);
       return {};
     }
 

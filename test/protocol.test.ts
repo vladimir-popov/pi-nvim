@@ -119,7 +119,9 @@ test("pastes selection without submitting and reports unavailable editor", async
       selection_type: "character",
     },
   });
-  assert.deepEqual(pasted, ["selected"]);
+  assert.deepEqual(pasted, [
+    `[Source: file "source.lua"; lines 1-1, columns 1-8; character-wise selection]\nselected`,
+  ]);
   await assert.rejects(
     () =>
       createRequestHandler(pi, () => ({

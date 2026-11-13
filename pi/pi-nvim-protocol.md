@@ -36,7 +36,7 @@ Every request has a non-empty string or numeric `id` and a `type`. The extension
 }
 ```
 
-`text` is inserted at the current Pi input-editor cursor position, preserving existing editor content. This request does not submit the editor contents. `selection` contains the source buffer identity (`buffer_id`), path (nullable when unavailable), buffer name, 1-based start/end line and column, and selection type (`character`, `line`, or `block`). Block selections require no additional corner semantics.
+The extension inserts a source hint followed by `text` at the current Pi input-editor cursor position, preserving existing editor content. The hint identifies a file buffer by path or a virtual buffer by name, and includes the 1-based line/column range and selection type. This request does not submit the editor contents. `selection` contains the source buffer identity (`buffer_id`), path (null for virtual buffers), buffer name, 1-based start/end line and column, and selection type (`character`, `line`, or `block`). Block selections require no additional corner semantics.
 
 ### Success
 
