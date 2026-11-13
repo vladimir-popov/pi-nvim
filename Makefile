@@ -14,4 +14,6 @@ test-node: check-node
 test-nvim: check-node
 	set -e; \
 	PI_NVIM_TEST_ROOT="$(CURDIR)" PI_NVIM_FAKE_MODE=connect $(NVIM) --headless -u NONE -c "lua dofile('test/nvim.lua')"; \
-	PI_NVIM_TEST_ROOT="$(CURDIR)" PI_NVIM_FAKE_MODE=no-connect $(NVIM) --headless -u NONE -c "lua dofile('test/nvim.lua')"
+	PI_NVIM_TEST_ROOT="$(CURDIR)" PI_NVIM_FAKE_MODE=no-connect $(NVIM) --headless -u NONE -c "lua dofile('test/nvim.lua')"; \
+	PI_NVIM_TEST_ROOT="$(CURDIR)" PI_NVIM_FAKE_MODE=horizontal $(NVIM) --headless -u NONE -c "lua dofile('test/nvim.lua')"; \
+	PI_NVIM_TEST_ROOT="$(CURDIR)" PI_NVIM_FAKE_MODE=vertical $(NVIM) --headless -u NONE -c "lua dofile('test/nvim.lua')"

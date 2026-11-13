@@ -9,7 +9,12 @@ function record(event: Record<string, unknown>) {
   if (eventFile) appendFileSync(eventFile, `${JSON.stringify(event)}\n`);
 }
 
-record({ type: "started", args: process.argv.slice(2), mode, socket: socketPath });
+record({
+  type: "started",
+  args: process.argv.slice(2),
+  mode,
+  socket: socketPath,
+});
 
 if (mode === "no-connect" || !socketPath) {
   // Keep the fake process alive just like an interactive Pi process that never connects.
@@ -28,7 +33,9 @@ if (mode === "no-connect" || !socketPath) {
       if (!line.trim()) continue;
       const request = JSON.parse(line);
       record({ type: "request", request });
-      socket.write(`${JSON.stringify({ id: request.id, ok: true, result: {} })}\n`);
+      socket.write(
+        `${JSON.stringify({ id: request.id, ok: true, result: {} })}\n`,
+      );
     }
   });
   socket.on("error", (error) => {

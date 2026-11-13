@@ -24,7 +24,8 @@ export function connectProtocolSocket({ socketPath, handleRequest }) {
     }
   });
   socket.on("end", () => {
-    if (pending.trim()) chain = chain.then(() => processLine(pending, socket, handleRequest));
+    if (pending.trim())
+      chain = chain.then(() => processLine(pending, socket, handleRequest));
   });
 
   return new Promise((resolve, reject) => {

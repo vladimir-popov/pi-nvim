@@ -175,9 +175,13 @@ local function enter_window()
 	if c.placement == "tab" then
 		vim.cmd("tabnew")
 	elseif c.placement == "horizontal" then
+		local height = math.max(1, math.floor(vim.api.nvim_win_get_height(current_win) * c.height / 100))
 		vim.cmd("belowright split")
+		vim.api.nvim_win_set_height(vim.api.nvim_get_current_win(), height)
 	elseif c.placement == "vertical" then
+		local width = math.max(1, math.floor(vim.api.nvim_win_get_width(current_win) * c.width / 100))
 		vim.cmd("belowright vsplit")
+		vim.api.nvim_win_set_width(vim.api.nvim_get_current_win(), width)
 	else
 		local width = math.max(1, math.floor(vim.o.columns * c.width / 100))
 		local height = math.max(1, math.floor(vim.o.lines * c.height / 100))

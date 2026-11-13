@@ -45,9 +45,13 @@ vim.notify = function(message, level)
 	table.insert(notices, { message = message, level = level })
 end
 
+local placement = (mode == "horizontal" or mode == "vertical") and mode or "tab"
 require("pi").setup({
 	command = { vim.fn.exepath("node"), "--experimental-strip-types", root .. "/test/fake-pi.ts" },
 	connection_timeout = mode == "no-connect" and 100 or 3000,
+	placement = placement,
+	width = 60,
+	height = 60,
 })
 
 if mode == "no-connect" then
@@ -71,6 +75,21 @@ if mode == "no-connect" then
 	end
 	if not notified then
 		fail("connection timeout did not notify Neovim")
+	end
+elseif mode == "horizontal" or mode == "vertical" then
+	local original_win = vim.api.nvim_get_current_win()
+	local original_size = mode == "horizontal" and vim.api.nvim_win_get_height(original_win)
+		or vim.api.nvim_win_get_width(original_win)
+	local target_size = math.max(1, math.floor(original_size * 60 / 100))
+	vim.cmd("Pi")
+	wait_for(function()
+		return find_event("connected") ~= nil
+	end, "fake Pi did not connect")
+	local pi_win = vim.api.nvim_get_current_win()
+	local actual_size = mode == "horizontal" and vim.api.nvim_win_get_height(pi_win)
+		or vim.api.nvim_win_get_width(pi_win)
+	if actual_size ~= target_size then
+		fail(string.format("%s split size was %d, expected %d", mode, actual_size, target_size))
 	end
 else
 	local original_win = vim.api.nvim_get_current_win()

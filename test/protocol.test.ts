@@ -13,7 +13,10 @@ afterEach(async () => {
 });
 
 async function connect(handler: (request: any) => unknown) {
-  const socketPath = path.join(os.tmpdir(), `pi-nvim-${process.pid}-${Math.random()}.sock`);
+  const socketPath = path.join(
+    os.tmpdir(),
+    `pi-nvim-${process.pid}-${Math.random()}.sock`,
+  );
   let peer: net.Socket | undefined;
   const listener = net.createServer((socket) => {
     peer = socket;
@@ -29,7 +32,10 @@ async function connect(handler: (request: any) => unknown) {
         listener.close(() => resolve());
       }),
   });
-  const connected = connectProtocolSocket({ socketPath, handleRequest: handler });
+  const connected = connectProtocolSocket({
+    socketPath,
+    handleRequest: handler,
+  });
   while (!peer) await new Promise((resolve) => setTimeout(resolve, 1));
   await connected;
   return peer;
@@ -90,9 +96,14 @@ test("submits prompt and queues follow-up while busy", async () => {
 test("pastes selection without submitting and reports unavailable editor", async () => {
   const pasted: string[] = [];
   const context = {
-    ui: { getEditorText: () => "draft", pasteToEditor: (text: string) => pasted.push(text) },
+    ui: {
+      getEditorText: () => "draft",
+      pasteToEditor: (text: string) => pasted.push(text),
+    },
   };
-  const pi = { sendUserMessage: () => assert.fail("selection must not submit") };
+  const pi = {
+    sendUserMessage: () => assert.fail("selection must not submit"),
+  };
   const handler = createRequestHandler(pi, () => context);
   await handler({
     type: "insert_selection",
@@ -111,7 +122,9 @@ test("pastes selection without submitting and reports unavailable editor", async
   assert.deepEqual(pasted, ["selected"]);
   await assert.rejects(
     () =>
-      createRequestHandler(pi, () => ({ ui: { getEditorText: () => undefined } }))({
+      createRequestHandler(pi, () => ({
+        ui: { getEditorText: () => undefined },
+      }))({
         type: "insert_selection",
         text: "x",
         selection: {
@@ -131,5 +144,8 @@ test("pastes selection without submitting and reports unavailable editor", async
 
 test("rejects unsupported request types", async () => {
   const handler = createRequestHandler({}, () => ({}));
-  await assert.rejects(() => handler({ type: "unknown" }), /Unsupported request type/);
+  await assert.rejects(
+    () => handler({ type: "unknown" }),
+    /Unsupported request type/,
+  );
 });
