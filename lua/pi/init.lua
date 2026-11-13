@@ -274,15 +274,13 @@ end
 
 local function transfer_selection()
 	local buf = vim.api.nvim_get_current_buf()
-	local visual_start = vim.fn.getpos("v")
-	local visual_end = vim.fn.getpos(".")
 	local start_pos, end_pos = vim.api.nvim_buf_get_mark(buf, "<"), vim.api.nvim_buf_get_mark(buf, ">")
 	if start_pos[1] > end_pos[1] or (start_pos[1] == end_pos[1] and start_pos[2] > end_pos[2]) then
 		start_pos, end_pos = end_pos, start_pos
 	end
 	local mode = vim.fn.visualmode()
 	local selection_type = mode == "V" and "line" or (mode == "\22" and "block" or "character")
-	local lines = vim.fn.getregion({ visual_start[2], visual_start[3] }, { visual_end[2], visual_end[3] }, {
+	local lines = vim.fn.getregion(vim.fn.getpos("'<"), vim.fn.getpos("'>"), {
 		type = mode,
 		exclusive = vim.o.selection == "exclusive",
 	})

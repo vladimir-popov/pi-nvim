@@ -3,33 +3,42 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, test } from "node:test";
-import { connectProtocolSocket } from "./protocol.js";
-import { createRequestHandler } from "./extension.js";
+import { connectProtocolSocket } from "../pi/protocol.js";
+import { createRequestHandler } from "../pi/extension.js";
 
-const servers = [];
+const servers: Array<{ close: () => Promise<void> }> = [];
+
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => server.close()));
 });
 
-async function connect(handler) {
+async function connect(handler: (request: any) => unknown) {
   const socketPath = path.join(os.tmpdir(), `pi-nvim-${process.pid}-${Math.random()}.sock`);
-  let peer;
-  const listener = net.createServer((socket) => { peer = socket; });
-  await new Promise((resolve, reject) => {
+  let peer: net.Socket | undefined;
+  const listener = net.createServer((socket) => {
+    peer = socket;
+  });
+  await new Promise<void>((resolve, reject) => {
     listener.once("error", reject);
     listener.listen(socketPath, resolve);
   });
-  servers.push({ close: () => new Promise((resolve) => listener.close(resolve)) });
+  servers.push({
+    close: () =>
+      new Promise((resolve) => {
+        peer?.destroy();
+        listener.close(() => resolve());
+      }),
+  });
   const connected = connectProtocolSocket({ socketPath, handleRequest: handler });
   while (!peer) await new Promise((resolve) => setTimeout(resolve, 1));
   await connected;
   return peer;
 }
 
-function readLines(socket, count) {
-  return new Promise((resolve, reject) => {
+function readLines(socket: net.Socket, count: number) {
+  return new Promise<any[]>((resolve, reject) => {
     let data = "";
-    const lines = [];
+    const lines: any[] = [];
     socket.setEncoding("utf8");
     socket.on("data", (chunk) => {
       data += chunk;
@@ -68,8 +77,8 @@ test("returns a correlated error for malformed JSON when its id is recoverable",
 });
 
 test("submits prompt and queues follow-up while busy", async () => {
-  const sent = [];
-  const pi = { sendUserMessage: async (...args) => sent.push(args) };
+  const sent: unknown[][] = [];
+  const pi = { sendUserMessage: async (...args: unknown[]) => sent.push(args) };
   let idle = true;
   const handler = createRequestHandler(pi, () => ({ isIdle: () => idle }));
   await handler({ type: "submit_prompt", prompt: "first" });
@@ -79,28 +88,43 @@ test("submits prompt and queues follow-up while busy", async () => {
 });
 
 test("pastes selection without submitting and reports unavailable editor", async () => {
-  const pasted = [];
-  const context = { ui: { getEditorText: () => "draft", pasteToEditor: (text) => pasted.push(text) } };
+  const pasted: string[] = [];
+  const context = {
+    ui: { getEditorText: () => "draft", pasteToEditor: (text: string) => pasted.push(text) },
+  };
   const pi = { sendUserMessage: () => assert.fail("selection must not submit") };
   const handler = createRequestHandler(pi, () => context);
   await handler({
     type: "insert_selection",
     text: "selected",
     selection: {
-      buffer_id: 1, path: "source.lua", buffer_name: "source.lua",
-      start_line: 1, start_col: 1, end_line: 1, end_col: 8, selection_type: "character",
+      buffer_id: 1,
+      path: "source.lua",
+      buffer_name: "source.lua",
+      start_line: 1,
+      start_col: 1,
+      end_line: 1,
+      end_col: 8,
+      selection_type: "character",
     },
   });
   assert.deepEqual(pasted, ["selected"]);
   await assert.rejects(
-    () => createRequestHandler(pi, () => ({ ui: { getEditorText: () => undefined } }))({
-      type: "insert_selection",
-      text: "x",
-      selection: {
-        buffer_id: 1, path: null, buffer_name: "source.lua",
-        start_line: 1, start_col: 1, end_line: 1, end_col: 1, selection_type: "character",
-      },
-    }),
+    () =>
+      createRequestHandler(pi, () => ({ ui: { getEditorText: () => undefined } }))({
+        type: "insert_selection",
+        text: "x",
+        selection: {
+          buffer_id: 1,
+          path: null,
+          buffer_name: "source.lua",
+          start_line: 1,
+          start_col: 1,
+          end_line: 1,
+          end_col: 1,
+          selection_type: "character",
+        },
+      }),
     /unavailable/,
   );
 });
