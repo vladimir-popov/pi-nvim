@@ -20,7 +20,7 @@ local state = {
     next_id = 0,
 }
 local extension = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p:h:h:h")
-    .. "/pi/pi-nvim.js"
+    .. "/pi/pi-nvim.ts"
 
 --- Shows a plugin-prefixed Neovim notification.
 local function notify(message, level)

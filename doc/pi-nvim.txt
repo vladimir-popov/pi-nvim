@@ -85,12 +85,12 @@ To enable the companion extension, add its entry point to the `extensions` list
 in `~/.pi/agent/settings.json`. Use the path where your plugin manager
 installed the repository. For example, with the default install locations:
 
-- Built-in package support: `~/.local/share/nvim/site/pack/plugins/start/pi-nvim/pi/pi-nvim.js`
-- lazy.nvim: `~/.local/share/nvim/lazy/pi-nvim/pi/pi-nvim.js`
+- Built-in package support: `~/.local/share/nvim/site/pack/plugins/start/pi-nvim/pi/pi-nvim.ts`
+- lazy.nvim: `~/.local/share/nvim/lazy/pi-nvim/pi/pi-nvim.ts`
 
   {
     "extensions": [
-      "~/.local/share/nvim/lazy/pi-nvim/pi/pi-nvim.js"
+      "~/.local/share/nvim/lazy/pi-nvim/pi/pi-nvim.ts"
     ]
   }
 
@@ -98,7 +98,7 @@ Choose the path matching your installation and merge the entry into an
 existing `extensions` list rather than replacing other configured extensions.
 If you customized Neovim's data directory or lazy.nvim's install directory,
 use the corresponding path instead. Pi loads this project's extension from
-`pi/pi-nvim.js`.
+`pi/pi-nvim.ts`.
 
 Usage                                            *pi-nvim-usage*
 

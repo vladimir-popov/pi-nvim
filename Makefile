@@ -7,13 +7,13 @@ test: test-node test-nvim
 
 fmt:
 	@case "$(filter lua js,$(MAKECMDGOALS))" in \
-		"") stylua lua/ && npx --no-install prettier --write 'pi/**/*.js' ;; \
+		"") stylua lua/ && npx --no-install prettier --write 'pi/**/*.{js,ts}' ;; \
 		lua) stylua lua/ ;; \
-		js) npx --no-install prettier --write 'pi/**/*.js' ;; \
+		ts) npx --no-install prettier --write 'pi/**/*.{js,ts}' ;; \
 		*) echo "Usage: make fmt [lua|js]" >&2; exit 2 ;; \
 	esac
 
-lua js:
+lua ts:
 	@:
 
 check-node:

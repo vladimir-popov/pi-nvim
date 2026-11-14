@@ -3,8 +3,8 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, test } from "node:test";
-import { connectProtocolSocket } from "../pi/protocol.js";
-import { createRequestHandler } from "../pi/pi-nvim.js";
+import { connectProtocolSocket } from "../pi/protocol.ts";
+import { createRequestHandler } from "../pi/pi-nvim.ts";
 
 const servers: Array<{ close: () => Promise<void> }> = [];
 
