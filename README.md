@@ -114,11 +114,15 @@ from `pi/pi-nvim.ts`.
 - Run `:Pi <your prompt>` to submit the complete argument as a prompt immediately.
 - Select text in Visual mode and run `:Pi` to insert that selection at the current cursor position
   in Pi's input editor without submitting it. The existing editor text is preserved.
+- In Pi, run `/open` to choose a path mentioned in the latest assistant message and open it in
+  Neovim. Ask Pi to list open buffers or open a file; it can select an optional source interval
+  (line and column range, with character-, line-, or block-wise selection).
 
 The plugin manages one Pi session per Neovim instance and does not attach to Pi terminals started
-independently. Pi starts in Neovim's current working directory. If the extension cannot connect
-before the configured timeout, the plugin reports the problem and cleans up the failed startup
-resources.
+independently. Pi starts in Neovim's current working directory. The `list_buffers` tool reports
+listed Neovim buffers; `open_file` opens a requested file and can select a source interval. If the
+extension cannot connect before the configured timeout, the plugin reports the problem and cleans up
+the failed startup resources.
 
 See [the JSONL protocol documentation](pi/pi-nvim-protocol.md) for the Neovim–Pi message format.
 
