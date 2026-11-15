@@ -58,7 +58,7 @@ export function extractFileReferences(text: string): FileReference[] {
     }
     const extensions = [...FILE_EXTENSIONS].sort((a, b) => b.length - a.length).join("|");
     const plainPath = new RegExp(
-        `(?<![\\w@.+-])\\.[\\w-]+(?::\\d+)?|(?<![\\w@.+-])(?:~\\/|\\.\\.?\\/|\\/)[\\w@.+/-]+(?::\\d+)?|(?:[\\w@.+-]+\\/)*[\\w@.+-]+\\.(?:${extensions})(?![\\w-])(?::\\d+)?`,
+        `(?<![\\w@.+-])\\.[\\w-]+(?::\\d+)?|(?<![\\w@.+-])(?:~\\/|\\.\\.?\\/)[\\w@.+/-]+(?::\\d+)?|(?<![\\w@.+-])\\/[\\w@.+-]+\\/[\\w@.+/-]+(?::\\d+)?|(?:[\\w@.+-]+\\/)*[\\w@.+-]+\\.(?:${extensions})(?![\\w-])(?::\\d+)?`,
         "g",
     );
     for (const match of text.matchAll(/`+([\s\S]*?)`+/g)) {
@@ -96,6 +96,41 @@ export function extractFileReferences(text: string): FileReference[] {
         if (seen.has(filePath)) continue;
         seen.add(filePath);
         references.push({ path: filePath, ...(cursorLine ? { cursorLine } : {}) });
+    }
+    return references;
+}
+
+/** Extracts paths changed by edit/write tool calls after the latest user message. */
+export function extractEditedFileReferences(branch: unknown[]): FileReference[] {
+    let lastUserMessage = -1;
+    for (let index = branch.length - 1; index >= 0; index--) {
+        const entry = branch[index];
+        if (
+            isRecord(entry) &&
+            entry.type === "message" &&
+            isRecord(entry.message) &&
+            entry.message.role === "user"
+        ) {
+            lastUserMessage = index;
+            break;
+        }
+    }
+
+    const references: FileReference[] = [];
+    const seen = new Set<string>();
+    for (const entry of branch.slice(lastUserMessage + 1)) {
+        if (!isRecord(entry) || entry.type !== "message" || !isRecord(entry.message)) continue;
+        const content = entry.message.content;
+        if (!Array.isArray(content)) continue;
+        for (const block of content) {
+            if (!isRecord(block) || block.type !== "toolCall") continue;
+            if (block.name !== "edit" && block.name !== "write") continue;
+            if (!isRecord(block.arguments) || typeof block.arguments.path !== "string") continue;
+            const path = block.arguments.path;
+            if (!path || seen.has(path)) continue;
+            seen.add(path);
+            references.push({ path });
+        }
     }
     return references;
 }

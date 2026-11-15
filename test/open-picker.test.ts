@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { extractAssistantFileReferences, extractFileReferences } from "../pi/open-picker.ts";
+import {
+    extractAssistantFileReferences,
+    extractEditedFileReferences,
+    extractFileReferences,
+} from "../pi/open-picker.ts";
 
 test("extracts Markdown links, code and plain-text file paths with line suffixes", () => {
     assert.deepEqual(
@@ -68,6 +72,12 @@ test("handles paths with spaces in code and Markdown link destinations", () => {
     );
 });
 
+test("recognizes absolute paths only when they have multiple path components", () => {
+    assert.deepEqual(extractFileReferences("/open is a command, but /open/usr is a path."), [
+        { path: "/open/usr" },
+    ]);
+});
+
 test("does not treat ordinary prose or slash-separated expressions as paths", () => {
     assert.deepEqual(
         extractFileReferences("Open this file. Dr. Smith agrees, e.g. here: and/or input/output."),
@@ -81,6 +91,38 @@ test("ignores URLs and non-file references and keeps first occurrence", () => {
             "https://example.com/a.ts, e.g. this and i.e. that; src/a.ts:9 then src/a.ts:20",
         ),
         [{ path: "src/a.ts", cursorLine: 9 }],
+    );
+});
+
+test("extracts edited file paths since the latest user message", () => {
+    assert.deepEqual(
+        extractEditedFileReferences([
+            { type: "message", message: { role: "user", content: "Earlier prompt" } },
+            {
+                type: "message",
+                message: {
+                    role: "assistant",
+                    content: [
+                        { type: "toolCall", name: "edit", arguments: { path: "src/a.ts" } },
+                        { type: "toolCall", name: "write", arguments: { path: "new.ts" } },
+                        { type: "toolCall", name: "read", arguments: { path: "readme.md" } },
+                    ],
+                },
+            },
+            { type: "message", message: { role: "user", content: "Latest prompt" } },
+            {
+                type: "message",
+                message: {
+                    role: "assistant",
+                    content: [
+                        { type: "toolCall", name: "edit", arguments: { path: "src/a.ts" } },
+                        { type: "toolCall", name: "write", arguments: { path: "new.ts" } },
+                        { type: "toolCall", name: "edit", arguments: { path: "src/a.ts" } },
+                    ],
+                },
+            },
+        ]),
+        [{ path: "src/a.ts" }, { path: "new.ts" }],
     );
 });
 

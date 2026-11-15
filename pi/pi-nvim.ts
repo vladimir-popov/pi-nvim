@@ -1,7 +1,7 @@
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Type, type TSchema } from "typebox";
 import { connectProtocolSocket } from "./protocol.ts";
-import { extractAssistantFileReferences } from "./open-picker.ts";
+import { extractAssistantFileReferences, extractEditedFileReferences } from "./open-picker.ts";
 
 type SelectionType = "character" | "line" | "block";
 
@@ -56,11 +56,18 @@ type ToolDefinition = {
 };
 
 interface PiApi {
-    sendUserMessage(prompt: string, options?: { deliverAs: "followUp" }): Promise<unknown>;
+    sendUserMessage(
+        prompt: string,
+        options?: { deliverAs?: "followUp"; expandPromptTemplates?: boolean },
+    ): Promise<unknown>;
     registerTool(tool: ToolDefinition): void;
     registerCommand(
         name: string,
         command: { description: string; handler(args: string, context: CommandContext): unknown },
+    ): void;
+    registerShortcut(
+        shortcut: string,
+        options: { description: string; handler(context: unknown): unknown },
     ): void;
     on(event: "session_start", handler: (event: unknown, context: PiContext) => unknown): void;
     on(event: "session_shutdown", handler: () => unknown): void;
@@ -240,6 +247,13 @@ export default function piNvimExtension(pi: PiApi): void {
         },
     });
 
+    pi.registerShortcut("alt+o", {
+        description: "Open a file mentioned in the latest assistant message",
+        handler: async () => {
+            await pi.sendUserMessage("/open", { expandPromptTemplates: true });
+        },
+    });
+
     pi.registerCommand("open", {
         description: "Open a file mentioned in the latest assistant message",
         async handler(_args, ctx) {
@@ -255,18 +269,26 @@ export default function piNvimExtension(pi: PiApi): void {
                 }
             }
             const references = extractAssistantFileReferences(latestAssistant);
-            if (references.length === 0) {
+            const editedReferences = extractEditedFileReferences(entries);
+            const allReferences = [...references];
+            const knownPaths = new Set(references.map(({ path }) => path));
+            for (const reference of editedReferences) {
+                if (!knownPaths.has(reference.path)) allReferences.push(reference);
+            }
+            if (allReferences.length === 0) {
                 ctx.ui.notify("No file paths found in the latest assistant message", "info");
                 return;
             }
-            const labels = references.map(
-                ({ path, cursorLine }) => `${path}${cursorLine ? `:${cursorLine}` : ""}`,
+            const editedPaths = new Set(editedReferences.map(({ path }) => path));
+            const labels = allReferences.map(
+                ({ path, cursorLine }) =>
+                    `${path}${cursorLine ? `:${cursorLine}` : ""}${editedPaths.has(path) ? " (edited)" : ""}`,
             );
             const choice = await ctx.ui.select("Open a file mentioned by the assistant", labels);
             if (choice === undefined) return;
             const index = labels.indexOf(choice);
             if (index < 0) return;
-            const reference = references[index];
+            const reference = allReferences[index];
             try {
                 await request({
                     type: "open_file",
