@@ -17,6 +17,7 @@ local state = {
     client = nil,
     connected = false,
     prior = nil,
+    cwd = nil,
     next_id = 0,
 }
 local extension = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p:h:h:h")
@@ -131,6 +132,136 @@ local function socket_request(payload, callback)
     state.client:write(vim.json.encode(payload) .. "\n")
 end
 
+--- Returns listed buffers with their Neovim buffer numbers and paths.
+local function list_buffers()
+    local result = {}
+    for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+        if vim.api.nvim_buf_is_valid(buf) and vim.bo[buf].buflisted then
+            table.insert(result, {
+                buffer_id = buf,
+                path = vim.api.nvim_buf_get_name(buf),
+            })
+        end
+    end
+    return result
+end
+
+--- Checks whether the saved window still contains a normal text or help buffer.
+local function eligible_prior()
+    local prior = state.prior
+    if not prior or not vim.api.nvim_win_is_valid(prior.win) then
+        return false
+    end
+    local win_config = vim.api.nvim_win_get_config(prior.win)
+    if win_config.relative ~= "" or vim.fn.win_gettype(prior.win) ~= "" then
+        return false
+    end
+    local buf = vim.api.nvim_win_get_buf(prior.win)
+    if not vim.bo[buf].buflisted then
+        return false
+    end
+    local buftype = vim.bo[buf].buftype
+    return buftype == "" or buftype == "help"
+end
+
+--- Creates a file window using the configured Pi placement and dimensions.
+local function open_file_window()
+    local current_win = vim.api.nvim_get_current_win()
+    local config = state.config
+    if config.placement == "tab" then
+        vim.cmd("tabnew")
+    elseif config.placement == "horizontal" then
+        local height =
+            math.max(1, math.floor(vim.api.nvim_win_get_height(current_win) * config.height / 100))
+        vim.cmd("belowright split")
+        vim.api.nvim_win_set_height(vim.api.nvim_get_current_win(), height)
+    elseif config.placement == "vertical" then
+        local width =
+            math.max(1, math.floor(vim.api.nvim_win_get_width(current_win) * config.width / 100))
+        vim.cmd("belowright vsplit")
+        vim.api.nvim_win_set_width(vim.api.nvim_get_current_win(), width)
+    else
+        local width = math.max(1, math.floor(vim.o.columns * config.width / 100))
+        local height = math.max(1, math.floor(vim.o.lines * config.height / 100))
+        vim.api.nvim_open_win(vim.api.nvim_create_buf(false, true), true, {
+            relative = "editor",
+            row = math.floor((vim.o.lines - height) / 2),
+            col = math.floor((vim.o.columns - width) / 2),
+            width = width,
+            height = height,
+            style = "minimal",
+            border = "single",
+        })
+    end
+end
+
+--- Opens an existing file in the eligible prior window or a new configured window.
+local function open_file(request)
+    if type(request.path) ~= "string" or request.path == "" then
+        error("path must be a non-empty string")
+    end
+    local selection = request.selection
+    if selection ~= nil then
+        if type(selection) ~= "table" then
+            error("selection must be an object")
+        end
+        for _, key in ipairs({ "start_line", "start_col", "end_line", "end_col" }) do
+            if
+                type(selection[key]) ~= "number"
+                or selection[key] < 1
+                or selection[key] % 1 ~= 0
+            then
+                error("selection." .. key .. " must be a positive integer")
+            end
+        end
+        if
+            selection.selection_type ~= "character"
+            and selection.selection_type ~= "line"
+            and selection.selection_type ~= "block"
+        then
+            error("selection.selection_type must be character, line, or block")
+        end
+    end
+    local path = request.path
+    if not vim.startswith(path, "/") then
+        path = (state.cwd or vim.fn.getcwd()) .. "/" .. path
+    end
+    path = vim.fn.fnamemodify(path, ":p")
+    if vim.fn.filereadable(path) == 0 then
+        notify("file does not exist: " .. path, vim.log.levels.WARN)
+        error("file does not exist: " .. path)
+    end
+    if eligible_prior() then
+        vim.api.nvim_set_current_win(state.prior.win)
+    else
+        open_file_window()
+    end
+    vim.cmd("edit " .. vim.fn.fnameescape(path))
+    if selection then
+        local start_line = math.min(selection.start_line, vim.api.nvim_buf_line_count(0))
+        local end_line = math.min(selection.end_line, vim.api.nvim_buf_line_count(0))
+        local start_col = math.min(
+            selection.start_col,
+            #vim.api.nvim_buf_get_lines(0, start_line - 1, start_line, false)[1] + 1
+        )
+        local end_col = math.min(
+            selection.end_col,
+            #vim.api.nvim_buf_get_lines(0, end_line - 1, end_line, false)[1] + 1
+        )
+        vim.api.nvim_win_set_cursor(0, { start_line, start_col - 1 })
+        vim.cmd(
+            "normal! "
+                .. (
+                    selection.selection_type == "line" and "V"
+                    or selection.selection_type == "block" and "\22"
+                    or "v"
+                )
+        )
+        vim.api.nvim_win_set_cursor(0, { end_line, end_col - 1 })
+    end
+    return {}
+end
+
 --- Creates the session socket and dispatches correlated responses to pending callbacks.
 local function create_socket()
     local uv = vim.uv or vim.loop
@@ -186,11 +317,25 @@ local function create_socket()
                     and message.id ~= nil
                     and type(message.type) == "string"
                 then
-                    client:write(vim.json.encode({
-                        id = message.id,
-                        ok = false,
-                        error = "Unsupported request type: " .. message.type,
-                    }) .. "\n")
+                    vim.schedule(function()
+                        local success, result = pcall(function()
+                            if message.type == "list_buffers" then
+                                return list_buffers()
+                            elseif message.type == "open_file" then
+                                return open_file(message)
+                            end
+                            error("Unsupported request type: " .. message.type)
+                        end)
+                        local response = { id = message.id, ok = success }
+                        if success then
+                            response.result = result
+                        else
+                            response.error = tostring(result)
+                        end
+                        if not client:is_closing() then
+                            client:write(vim.json.encode(response) .. "\n")
+                        end
+                    end)
                 end
             end
         end)
@@ -259,9 +404,10 @@ local function start()
     vim.bo[state.buf].bufhidden = "hide"
     local env = vim.fn.environ()
     env.PI_NVIM_SOCKET = state.socket_path
+    state.cwd = vim.fn.getcwd()
     state.job = vim.fn.jobstart(argv(), {
         term = true,
-        cwd = vim.fn.getcwd(),
+        cwd = state.cwd,
         env = env,
         on_exit = function()
             state.job = nil

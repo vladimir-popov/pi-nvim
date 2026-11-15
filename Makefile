@@ -34,4 +34,6 @@ test-nvim: check-node
 	PI_NVIM_TEST_ROOT="$(CURDIR)" PI_NVIM_FAKE_MODE=no-connect $(NVIM) --headless -u NONE -c "lua dofile('test/nvim.lua')" >/dev/null; \
 	PI_NVIM_TEST_ROOT="$(CURDIR)" PI_NVIM_FAKE_MODE=horizontal $(NVIM) --headless -u NONE -c "lua dofile('test/nvim.lua')" >/dev/null; \
 	PI_NVIM_TEST_ROOT="$(CURDIR)" PI_NVIM_FAKE_MODE=vertical $(NVIM) --headless -u NONE -c "lua dofile('test/nvim.lua')" >/dev/null; \
+	PI_NVIM_TEST_ROOT="$(CURDIR)" PI_NVIM_FAKE_MODE=operations $(NVIM) --headless -u NONE -c "lua dofile('test/nvim.lua')" >/dev/null; \
+	PI_NVIM_TEST_ROOT="$(CURDIR)" PI_NVIM_FAKE_MODE=operations-fallback $(NVIM) --headless -u NONE -c "lua dofile('test/nvim.lua')" >/dev/null; \
 	echo "Neovim plugin integration tests passed"

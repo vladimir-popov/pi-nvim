@@ -47,6 +47,13 @@ vim.notify = function(message, level)
     table.insert(notices, { message = message, level = level })
 end
 
+local operation_path = ".pi-nvim-open-test"
+if mode:match("^operations") then
+    vim.fn.writefile({ "first line", "second line", "third line" }, operation_path)
+    vim.fn.writefile({ "invalid selection target" }, operation_path .. ".invalid")
+    vim.env.PI_NVIM_OPERATION_PATH = operation_path
+end
+
 local placement = (mode == "horizontal" or mode == "vertical") and mode or "tab"
 require("pi-nvim").setup({
     command = { vim.fn.exepath("node"), "--experimental-strip-types", root .. "/test/fake-pi.ts" },
@@ -78,6 +85,113 @@ if mode == "no-connect" then
     if not notified then
         fail("connection timeout did not notify Neovim")
     end
+elseif mode:match("^operations") then
+    local prior_win = vim.api.nvim_get_current_win()
+    local prior_tab = vim.api.nvim_get_current_tabpage()
+    local listed_buf = vim.api.nvim_get_current_buf()
+    vim.api.nvim_buf_set_name(listed_buf, "listed-test-buffer")
+    if mode == "operations-fallback" then
+        vim.api.nvim_open_win(listed_buf, true, {
+            relative = "editor",
+            row = 1,
+            col = 1,
+            width = 20,
+            height = 5,
+        })
+    end
+    vim.cmd("Pi")
+    wait_for(function()
+        return find_event("connected") ~= nil
+    end, "fake Pi did not connect")
+    local pi_win = vim.api.nvim_get_current_win()
+    local pi_buf = vim.api.nvim_get_current_buf()
+    wait_for(function()
+        return find_event("response") ~= nil
+    end, "Neovim did not respond to buffer-list request")
+    local responses = {}
+    for _, event in ipairs(events()) do
+        if event.type == "response" then
+            responses[event.response.id] = event.response
+        end
+    end
+    local listed = assert(responses["list-1"], "buffer-list response is missing").result
+    local found_listed, found_pi = false, false
+    for _, buffer in ipairs(listed) do
+        if
+            buffer.buffer_id == listed_buf
+            and buffer.path == vim.fn.fnamemodify("listed-test-buffer", ":p")
+        then
+            found_listed = true
+        end
+        if buffer.path == "Pi" then
+            found_pi = true
+        end
+    end
+    if not found_listed or found_pi then
+        fail("buffer listing did not include the listed buffer while excluding Pi")
+    end
+    wait_for(function()
+        for _, event in ipairs(events()) do
+            if event.type == "response" then
+                responses[event.response.id] = event.response
+            end
+        end
+        return responses["open-invalid"] ~= nil
+            and responses["open-plain"] ~= nil
+            and responses["open-character"] ~= nil
+            and responses["open-line"] ~= nil
+            and responses["open-block"] ~= nil
+            and responses["open-missing"] ~= nil
+    end, "Neovim did not respond to file-open requests")
+    if mode == "operations" and vim.api.nvim_get_current_win() ~= prior_win then
+        fail("file did not open in the eligible prior window")
+    elseif mode == "operations-fallback" then
+        if vim.api.nvim_get_current_win() == prior_win then
+            fail("file open reused an ineligible prior window")
+        end
+        if vim.api.nvim_get_current_tabpage() == prior_tab then
+            fail("file open did not use the configured tab placement fallback")
+        end
+    end
+    if vim.api.nvim_buf_get_name(0) ~= vim.fn.fnamemodify(operation_path, ":p") then
+        fail("relative file path was not resolved against Pi's working directory")
+    end
+    local cursor = vim.api.nvim_win_get_cursor(0)
+    if cursor[1] ~= 2 or cursor[2] ~= 3 then
+        fail("requested source interval did not position the cursor")
+    end
+    if responses["open-invalid"].ok then
+        fail("invalid selection request unexpectedly succeeded")
+    end
+    local invalid_buffer_opened = false
+    for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+        if
+            vim.api.nvim_buf_get_name(buf) == vim.fn.fnamemodify(operation_path .. ".invalid", ":p")
+        then
+            invalid_buffer_opened = true
+        end
+    end
+    if invalid_buffer_opened then
+        fail("invalid selection request opened its target file before failing")
+    end
+    if responses["open-missing"].ok or vim.fn.filereadable(".pi-nvim-missing-test") ~= 0 then
+        fail("missing file request created a buffer or returned success")
+    end
+    local warned = false
+    for _, notice in ipairs(notices) do
+        if notice.level == vim.log.levels.WARN then
+            warned = true
+        end
+    end
+    if not warned then
+        fail("missing file request did not issue a warning")
+    end
+    vim.cmd("Pi")
+    if vim.api.nvim_get_current_win() ~= pi_win or vim.api.nvim_get_current_buf() ~= pi_buf then
+        fail("opening a file replaced the managed Pi window reference")
+    end
+    vim.fn.delete(operation_path)
+    vim.fn.delete(operation_path .. ".invalid")
 elseif mode == "horizontal" or mode == "vertical" then
     local original_win = vim.api.nvim_get_current_win()
     local original_size = mode == "horizontal" and vim.api.nvim_win_get_height(original_win)
@@ -160,4 +274,8 @@ end
 
 vim.notify = original_notify
 vim.fn.delete(log)
+if not mode:match("^operations") then
+    vim.fn.delete(operation_path)
+    vim.fn.delete(operation_path .. ".invalid")
+end
 vim.cmd("qa!")
