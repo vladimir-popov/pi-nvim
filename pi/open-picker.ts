@@ -2,10 +2,44 @@
 export type FileReference = { path: string; cursorLine?: number };
 
 const FILE_EXTENSIONS = new Set([
-    "c", "cc", "cpp", "cs", "css", "csv", "cjs", "cts", "go", "h", "hpp", "html",
-    "java", "js", "json", "jsonc", "jsx", "lua", "md", "mjs", "mts", "php", "py",
-    "rb", "rs", "scss", "sh", "sql", "svg", "toml", "ts", "tsx", "txt", "vue", "xml",
-    "yaml", "yml", "zig",
+    "c",
+    "cc",
+    "cpp",
+    "cs",
+    "css",
+    "csv",
+    "cjs",
+    "cts",
+    "go",
+    "h",
+    "hpp",
+    "html",
+    "java",
+    "js",
+    "json",
+    "jsonc",
+    "jsx",
+    "lua",
+    "md",
+    "mjs",
+    "mts",
+    "php",
+    "py",
+    "rb",
+    "rs",
+    "scss",
+    "sh",
+    "sql",
+    "svg",
+    "toml",
+    "ts",
+    "tsx",
+    "txt",
+    "vue",
+    "xml",
+    "yaml",
+    "yml",
+    "zig",
 ]);
 
 /** Extracts ordered, deduplicated file references and optional `:line` positions from text. */
@@ -24,7 +58,7 @@ export function extractFileReferences(text: string): FileReference[] {
     }
     const extensions = [...FILE_EXTENSIONS].sort((a, b) => b.length - a.length).join("|");
     const plainPath = new RegExp(
-        `(?<![\\w@.+-])(?:~\\/|\\.\\.?\\/|\\/)[\\w@.+/-]+(?::\\d+)?|(?:[\\w@.+-]+\\/)*[\\w@.+-]+\\.(?:${extensions})(?![\\w-])(?::\\d+)?`,
+        `(?<![\\w@.+-])\\.[\\w-]+(?::\\d+)?|(?<![\\w@.+-])(?:~\\/|\\.\\.?\\/|\\/)[\\w@.+/-]+(?::\\d+)?|(?:[\\w@.+-]+\\/)*[\\w@.+-]+\\.(?:${extensions})(?![\\w-])(?::\\d+)?`,
         "g",
     );
     for (const match of text.matchAll(/`+([\s\S]*?)`+/g)) {

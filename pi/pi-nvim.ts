@@ -192,9 +192,10 @@ export default function piNvimExtension(pi: PiApi): void {
         name: "open_file",
         label: "Open file in Neovim",
         description: "Open a file in Neovim, optionally selecting a source interval.",
-        promptSnippet: "Open a file in Neovim, optionally at a source interval",
+        promptSnippet: "Open or show a file in Neovim, optionally at a source interval",
         promptGuidelines: [
-            "Use open_file when the user's file reference can be resolved from the conversation or listed buffers.",
+            "Treat requests to open, show, or display a file as requests to open it in Neovim; use open_file when the file reference can be resolved from the conversation or listed buffers.",
+            "Do not print the file contents unless the user explicitly asks to see them in the chat.",
             "Ask the user to clarify rather than guess when an open_file target is unclear or ambiguous, and offer likely paths when available.",
         ],
         parameters: Type.Object(
@@ -273,10 +274,7 @@ export default function piNvimExtension(pi: PiApi): void {
                     ...(reference.cursorLine ? { cursor_line: reference.cursorLine } : {}),
                 });
             } catch (error) {
-                ctx.ui.notify(
-                    error instanceof Error ? error.message : String(error),
-                    "error",
-                );
+                ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
             }
         },
     });

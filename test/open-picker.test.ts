@@ -54,6 +54,13 @@ test("accepts extensionless Markdown file targets", () => {
     ]);
 });
 
+test("recognizes dotfiles in prose and code spans", () => {
+    assert.deepEqual(extractFileReferences("Open .gitignore or `.env:12`."), [
+        { path: ".gitignore" },
+        { path: ".env", cursorLine: 12 },
+    ]);
+});
+
 test("handles paths with spaces in code and Markdown link destinations", () => {
     assert.deepEqual(
         extractFileReferences("Use [source](<src/my file.ts>) and `lib/my helper.lua`."),

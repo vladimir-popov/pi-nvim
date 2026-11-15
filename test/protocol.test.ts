@@ -324,6 +324,8 @@ test("registers Neovim tools and forwards their calls over the session socket", 
             "block",
         ]);
         assert.match(tools.get("open_file").promptGuidelines.join(" "), /ambiguous/);
+        assert.match(tools.get("open_file").promptGuidelines.join(" "), /show, or display/);
+        assert.match(tools.get("open_file").promptGuidelines.join(" "), /Do not print the file contents/);
         await handlers.get("session_start")?.(
             {},
             {
