@@ -1,6 +1,7 @@
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Type, type TSchema } from "typebox";
 import { connectProtocolSocket } from "./protocol.ts";
+import { extractAssistantFileReferences } from "./open-picker.ts";
 
 type SelectionType = "character" | "line" | "block";
 
@@ -31,6 +32,14 @@ interface PiContext {
     };
 }
 
+interface CommandContext {
+    sessionManager: { getBranch(): unknown[] };
+    ui: {
+        select(title: string, choices: string[]): Promise<string | undefined>;
+        notify(message: string, level: "info" | "warning" | "error"): void;
+    };
+}
+
 type ToolResult = {
     content: Array<{ type: "text"; text: string }>;
     details: unknown;
@@ -49,6 +58,10 @@ type ToolDefinition = {
 interface PiApi {
     sendUserMessage(prompt: string, options?: { deliverAs: "followUp" }): Promise<unknown>;
     registerTool(tool: ToolDefinition): void;
+    registerCommand(
+        name: string,
+        command: { description: string; handler(args: string, context: CommandContext): unknown },
+    ): void;
     on(event: "session_start", handler: (event: unknown, context: PiContext) => unknown): void;
     on(event: "session_shutdown", handler: () => unknown): void;
 }
@@ -143,7 +156,12 @@ export default function piNvimExtension(pi: PiApi): void {
     const request = async (
         payload:
             | { type: "list_buffers" }
-            | { type: "open_file"; path: string; selection?: SourceInterval },
+            | {
+                  type: "open_file";
+                  path: string;
+                  selection?: SourceInterval;
+                  cursor_line?: number;
+              },
     ) => {
         if (!connection) {
             const reason = connectionError instanceof Error ? `: ${connectionError.message}` : "";
@@ -182,6 +200,9 @@ export default function piNvimExtension(pi: PiApi): void {
         parameters: Type.Object(
             {
                 path: Type.String({ minLength: 1, description: "File path to open" }),
+                cursor_line: Type.Optional(
+                    Type.Integer({ minimum: 1, description: "Line to place the cursor on" }),
+                ),
                 selection: Type.Optional(
                     Type.Object(
                         {
@@ -203,9 +224,60 @@ export default function piNvimExtension(pi: PiApi): void {
                 throw new Error("path must be a non-empty string");
             }
             const selection = params.selection as SourceInterval | undefined;
+            const cursorLine = params.cursor_line;
+            if (selection && cursorLine !== undefined) {
+                throw new Error("selection and cursor_line cannot be combined");
+            }
             return resultFor(
-                await request({ type: "open_file", path, ...(selection ? { selection } : {}) }),
+                await request({
+                    type: "open_file",
+                    path,
+                    ...(selection ? { selection } : {}),
+                    ...(typeof cursorLine === "number" ? { cursor_line: cursorLine } : {}),
+                }),
             );
+        },
+    });
+
+    pi.registerCommand("open", {
+        description: "Open a file mentioned in the latest assistant message",
+        async handler(_args, ctx) {
+            const entries = ctx.sessionManager.getBranch();
+            let latestAssistant: unknown;
+            for (let index = entries.length - 1; index >= 0; index--) {
+                const entry = entries[index];
+                if (isRecord(entry) && entry.type === "message" && isRecord(entry.message)) {
+                    if (entry.message.role === "assistant") {
+                        latestAssistant = entry.message;
+                        break;
+                    }
+                }
+            }
+            const references = extractAssistantFileReferences(latestAssistant);
+            if (references.length === 0) {
+                ctx.ui.notify("No file paths found in the latest assistant message", "info");
+                return;
+            }
+            const labels = references.map(
+                ({ path, cursorLine }) => `${path}${cursorLine ? `:${cursorLine}` : ""}`,
+            );
+            const choice = await ctx.ui.select("Open a file mentioned by the assistant", labels);
+            if (choice === undefined) return;
+            const index = labels.indexOf(choice);
+            if (index < 0) return;
+            const reference = references[index];
+            try {
+                await request({
+                    type: "open_file",
+                    path: reference.path,
+                    ...(reference.cursorLine ? { cursor_line: reference.cursorLine } : {}),
+                });
+            } catch (error) {
+                ctx.ui.notify(
+                    error instanceof Error ? error.message : String(error),
+                    "error",
+                );
+            }
         },
     });
 

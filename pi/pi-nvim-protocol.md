@@ -56,20 +56,16 @@ each item includes `buffer_id` (the Neovim buffer number) and `path`.
     "id": "pi-2",
     "type": "open_file",
     "path": "src/main.lua",
-    "selection": {
-        "start_line": 3,
-        "start_col": 1,
-        "end_line": 4,
-        "end_col": 9,
-        "selection_type": "line"
-    }
+    "cursor_line": 42
 }
 ```
 
 Pi sends this request to Neovim. `path` is required and non-empty. `selection` is optional; when supplied, its
 1-based start/end line and column coordinates and `selection_type` (`character`, `line`, or `block`)
-follow the Visual-selection conventions. Omit `selection` to open without selecting an interval. A
-successful open returns an empty object.
+follow the Visual-selection conventions. `cursor_line` is an optional positive, 1-based line number;
+when supplied, Neovim places the cursor on that line without creating a Visual selection. Do not
+combine `selection` and `cursor_line`. Omit both to open without positioning. A successful open
+returns an empty object.
 
 ### Insert a visual selection
 

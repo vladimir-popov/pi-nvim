@@ -12,7 +12,13 @@ type SourceInterval = {
     selection_type: "character" | "line" | "block";
 };
 type OutboundRequest =
-    { type: "list_buffers" } | { type: "open_file"; path: string; selection?: SourceInterval };
+    | { type: "list_buffers" }
+    | {
+          type: "open_file";
+          path: string;
+          selection?: SourceInterval;
+          cursor_line?: number;
+      };
 type SocketCloseHandle = {
     close(): Promise<void>;
     request(request: OutboundRequest): Promise<unknown>;
@@ -151,6 +157,14 @@ function validateOutboundRequest(request: OutboundRequest): void {
     if (request.type === "list_buffers") return;
     if (typeof request.path !== "string" || request.path.length === 0) {
         throw new Error("open_file path must be a non-empty string");
+    }
+    if (request.cursor_line !== undefined && request.selection !== undefined) {
+        throw new Error("open_file cursor_line and selection cannot be combined");
+    }
+    if (request.cursor_line !== undefined) {
+        if (!Number.isInteger(request.cursor_line) || request.cursor_line < 1) {
+            throw new Error("open_file cursor_line must be a positive integer");
+        }
     }
     if (request.selection === undefined) return;
     const selection = request.selection;

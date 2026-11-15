@@ -25,7 +25,16 @@ if (mode === "no-connect" || !socketPath) {
     socket.setEncoding("utf8");
     socket.on("connect", () => {
         record({ type: "connected" });
-        if (mode.startsWith("operations")) {
+        if (mode === "cursor-line") {
+            socket.write(
+                `${JSON.stringify({
+                    id: "open-cursor-line",
+                    type: "open_file",
+                    path: process.env.PI_NVIM_OPERATION_PATH,
+                    cursor_line: 3,
+                })}\n`,
+            );
+        } else if (mode.startsWith("operations")) {
             const path = process.env.PI_NVIM_OPERATION_PATH;
             socket.write(`${JSON.stringify({ id: "list-1", type: "list_buffers" })}\n`);
             socket.write(

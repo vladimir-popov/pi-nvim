@@ -83,6 +83,23 @@ test("sends outbound requests and resolves their correlated responses", async ()
     socket.destroy();
 });
 
+test("sends a cursor-line open request", async () => {
+    const socket = await connect(() => ({}));
+    const responses = readLines(socket, 1);
+    const result = socket.protocol.request({
+        type: "open_file",
+        path: "src/a.ts",
+        cursor_line: 42,
+    });
+    const [request] = await responses;
+    assert.equal(request.type, "open_file");
+    assert.equal(request.path, "src/a.ts");
+    assert.equal(request.cursor_line, 42);
+    socket.write(`${JSON.stringify({ id: request.id, ok: true, result: {} })}\n`);
+    assert.deepEqual(await result, {});
+    socket.destroy();
+});
+
 test("rejects outbound requests on correlated errors and ignores unknown responses", async () => {
     const socket = await connect(() => assert.fail("responses are not requests"));
     const responses = readLines(socket, 1);
@@ -117,6 +134,25 @@ test("validates outbound file paths and source intervals", async () => {
     await assert.rejects(
         socket.protocol.request({ type: "open_file", path: "", selection: undefined }),
         /path must be a non-empty string/,
+    );
+    await assert.rejects(
+        socket.protocol.request({ type: "open_file", path: "src/a.ts", cursor_line: 0 }),
+        /cursor_line must be a positive integer/,
+    );
+    await assert.rejects(
+        socket.protocol.request({
+            type: "open_file",
+            path: "src/a.ts",
+            cursor_line: 1,
+            selection: {
+                start_line: 1,
+                start_col: 1,
+                end_line: 1,
+                end_col: 1,
+                selection_type: "character",
+            },
+        }),
+        /cannot be combined/,
     );
     await assert.rejects(
         socket.protocol.request({
@@ -261,15 +297,18 @@ test("registers Neovim tools and forwards their calls over the session socket", 
     const previousSocket = process.env.PI_NVIM_SOCKET;
     process.env.PI_NVIM_SOCKET = socketPath;
     const tools = new Map<string, any>();
+    const commands = new Map<string, any>();
     const handlers = new Map<string, (...args: any[]) => unknown>();
     const pi = {
         registerTool: (tool: any) => tools.set(tool.name, tool),
+        registerCommand: (name: string, command: any) => commands.set(name, command),
         on: (event: string, handler: (...args: any[]) => unknown) => handlers.set(event, handler),
         sendUserMessage: async () => {},
     };
     try {
         piNvimExtension(pi as any);
         assert.deepEqual([...tools.keys()], ["list_buffers", "open_file"]);
+        assert.ok(commands.has("open"));
         const listSchema = tools.get("list_buffers").parameters;
         const openSchema = tools.get("open_file").parameters;
         assert.equal(listSchema.type, "object");
@@ -277,6 +316,7 @@ test("registers Neovim tools and forwards their calls over the session socket", 
         assert.equal(openSchema.type, "object");
         assert.deepEqual(openSchema.required, ["path"]);
         assert.equal(openSchema.properties.path.minLength, 1);
+        assert.equal(openSchema.properties.cursor_line.type, "integer");
         assert.equal(openSchema.properties.selection.properties.start_line.type, "integer");
         assert.deepEqual(openSchema.properties.selection.properties.selection_type.enum, [
             "character",
@@ -322,6 +362,77 @@ test("registers Neovim tools and forwards their calls over the session socket", 
                 },
             ],
         );
+        const pickerNotices: Array<{ message: string; level: string }> = [];
+        let choices: string[] = [];
+        await commands.get("open").handler("", {
+            sessionManager: {
+                getBranch: () => [
+                    { type: "message", message: { role: "assistant", content: "old.ts" } },
+                    {
+                        type: "message",
+                        message: {
+                            role: "assistant",
+                            content: [
+                                { type: "text", text: "See [latest](src/latest.ts:8) and other.ts." },
+                                { type: "toolCall", arguments: { path: "secret.ts" } },
+                            ],
+                        },
+                    },
+                    { type: "message", message: { role: "toolResult", content: "hidden.ts" } },
+                ],
+            },
+            ui: {
+                select: async (_title: string, options: string[]) => {
+                    choices = options;
+                    return "src/latest.ts:8";
+                },
+                notify: (message: string, level: string) => pickerNotices.push({ message, level }),
+            },
+        });
+        assert.deepEqual(choices, ["src/latest.ts:8", "other.ts"]);
+        assert.deepEqual(
+            received.at(-1),
+            {
+                id: received.at(-1).id,
+                type: "open_file",
+                path: "src/latest.ts",
+                cursor_line: 8,
+            },
+        );
+        const previousRequestCount = received.length;
+        await commands.get("open").handler("", {
+            sessionManager: {
+                getBranch: () => [{ type: "message", message: { role: "assistant", content: "No paths." } }],
+            },
+            ui: {
+                select: async () => assert.fail("empty picker must not open"),
+                notify: (message: string, level: string) => pickerNotices.push({ message, level }),
+            },
+        });
+        assert.equal(received.length, previousRequestCount);
+        assert.equal(pickerNotices[0].level, "info");
+        await commands.get("open").handler("", {
+            sessionManager: {
+                getBranch: () => [
+                    { type: "message", message: { role: "assistant", content: "src/cancel.ts" } },
+                ],
+            },
+            ui: {
+                select: async () => undefined,
+                notify: (message: string, level: string) => pickerNotices.push({ message, level }),
+            },
+        });
+        assert.equal(received.length, previousRequestCount);
+        await commands.get("open").handler("", {
+            sessionManager: {
+                getBranch: () => [{ type: "message", message: { role: "assistant", content: "missing.ts" } }],
+            },
+            ui: {
+                select: async () => "missing.ts",
+                notify: (message: string, level: string) => pickerNotices.push({ message, level }),
+            },
+        });
+        assert.equal(pickerNotices.at(-1)?.level, "error");
         await assert.rejects(
             () => tools.get("open_file").execute("call-3", { path: "missing.ts" }),
             /not found/,
@@ -346,6 +457,7 @@ test("allows startup when the Neovim socket is unavailable", async () => {
     try {
         piNvimExtension({
             registerTool: (tool: any) => tools.set(tool.name, tool),
+            registerCommand: () => {},
             on: (event: string, handler: (...args: any[]) => unknown) =>
                 handlers.set(event, handler),
             sendUserMessage: async () => {},

@@ -201,6 +201,16 @@ local function open_file(request)
         error("path must be a non-empty string")
     end
     local selection = request.selection
+    local cursor_line = request.cursor_line
+    if cursor_line ~= nil and selection ~= nil then
+        error("cursor_line and selection cannot be combined")
+    end
+    if
+        cursor_line ~= nil
+        and (type(cursor_line) ~= "number" or cursor_line < 1 or cursor_line % 1 ~= 0)
+    then
+        error("cursor_line must be a positive integer")
+    end
     if selection ~= nil then
         if type(selection) ~= "table" then
             error("selection must be an object")
@@ -237,7 +247,10 @@ local function open_file(request)
         open_file_window()
     end
     vim.cmd("edit " .. vim.fn.fnameescape(path))
-    if selection then
+    if cursor_line ~= nil then
+        local line = math.min(cursor_line, vim.api.nvim_buf_line_count(0))
+        vim.api.nvim_win_set_cursor(0, { line, 0 })
+    elseif selection then
         local start_line = math.min(selection.start_line, vim.api.nvim_buf_line_count(0))
         local end_line = math.min(selection.end_line, vim.api.nvim_buf_line_count(0))
         local start_col = math.min(

@@ -48,7 +48,7 @@ vim.notify = function(message, level)
 end
 
 local operation_path = ".pi-nvim-open-test"
-if mode:match("^operations") then
+if mode:match("^operations") or mode == "cursor-line" then
     vim.fn.writefile({ "first line", "second line", "third line" }, operation_path)
     vim.fn.writefile({ "invalid selection target" }, operation_path .. ".invalid")
     vim.env.PI_NVIM_OPERATION_PATH = operation_path
@@ -192,6 +192,24 @@ elseif mode:match("^operations") then
     end
     vim.fn.delete(operation_path)
     vim.fn.delete(operation_path .. ".invalid")
+elseif mode == "cursor-line" then
+    vim.cmd("Pi")
+    wait_for(function()
+        return find_event("response") ~= nil
+    end, "Neovim did not respond to cursor-line request")
+    local response = find_event("response").response
+    if response.id ~= "open-cursor-line" or not response.ok then
+        fail("cursor-line request did not succeed")
+    end
+    local cursor = vim.api.nvim_win_get_cursor(0)
+    if cursor[1] ~= 3 or cursor[2] ~= 0 then
+        fail("cursor_line did not position the cursor")
+    end
+    if vim.fn.mode():match("^[vV]") or vim.fn.mode() == "\22" then
+        fail("cursor_line unexpectedly created a Visual selection")
+    end
+    vim.fn.delete(operation_path)
+    vim.fn.delete(operation_path .. ".invalid")
 elseif mode == "horizontal" or mode == "vertical" then
     local original_win = vim.api.nvim_get_current_win()
     local original_size = mode == "horizontal" and vim.api.nvim_win_get_height(original_win)
@@ -274,7 +292,7 @@ end
 
 vim.notify = original_notify
 vim.fn.delete(log)
-if not mode:match("^operations") then
+if not mode:match("^operations") and mode ~= "cursor-line" then
     vim.fn.delete(operation_path)
     vim.fn.delete(operation_path .. ".invalid")
 end
