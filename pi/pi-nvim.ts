@@ -1,6 +1,16 @@
+import { StringEnum } from "@earendil-works/pi-ai";
+import { Type, type TSchema } from "typebox";
 import { connectProtocolSocket } from "./protocol.ts";
 
 type SelectionType = "character" | "line" | "block";
+
+type SourceInterval = {
+    start_line: number;
+    start_col: number;
+    end_line: number;
+    end_col: number;
+    selection_type: SelectionType;
+};
 
 type Selection = {
     buffer_id: string | number;
@@ -21,8 +31,24 @@ interface PiContext {
     };
 }
 
+type ToolResult = {
+    content: Array<{ type: "text"; text: string }>;
+    details: unknown;
+};
+
+type ToolDefinition = {
+    name: string;
+    label: string;
+    description: string;
+    promptSnippet: string;
+    promptGuidelines: string[];
+    parameters: TSchema;
+    execute(toolCallId: string, params: Record<string, unknown>): Promise<ToolResult>;
+};
+
 interface PiApi {
     sendUserMessage(prompt: string, options?: { deliverAs: "followUp" }): Promise<unknown>;
+    registerTool(tool: ToolDefinition): void;
     on(event: "session_start", handler: (event: unknown, context: PiContext) => unknown): void;
     on(event: "session_shutdown", handler: () => unknown): void;
 }
@@ -104,25 +130,101 @@ export function createRequestHandler(
 }
 
 /**
- * Registers Pi session hooks that connect to the socket named by `PI_NVIM_SOCKET`.
- * The connection is opened at session start and closed at session shutdown;
- * if the environment variable is absent, no socket connection is attempted.
+ * Registers model-callable Neovim tools and session hooks for `PI_NVIM_SOCKET`.
+ * The socket opens at session start and closes at shutdown; without the environment
+ * variable, the tools remain registered but report that Neovim is unavailable.
  */
 export default function piNvimExtension(pi: PiApi): void {
     let connection: Awaited<ReturnType<typeof connectProtocolSocket>> | undefined;
+    let connectionError: unknown;
     let context: PiContext | undefined;
     const socketPath = process.env.PI_NVIM_SOCKET;
+
+    const request = async (
+        payload:
+            | { type: "list_buffers" }
+            | { type: "open_file"; path: string; selection?: SourceInterval },
+    ) => {
+        if (!connection) {
+            const reason = connectionError instanceof Error ? `: ${connectionError.message}` : "";
+            throw new Error(`Neovim connection is unavailable${reason}`);
+        }
+        return connection.request(payload);
+    };
+    const resultFor = (value: unknown): ToolResult => ({
+        content: [{ type: "text", text: JSON.stringify(value) ?? "null" }],
+        details: value,
+    });
+
+    pi.registerTool({
+        name: "list_buffers",
+        label: "List Neovim buffers",
+        description: "List the currently listed Neovim buffers and their paths.",
+        promptSnippet: "List open Neovim buffers",
+        promptGuidelines: [
+            "Use list_buffers to identify open files when session context refers to an existing buffer.",
+        ],
+        parameters: Type.Object({}, { additionalProperties: false }),
+        async execute() {
+            return resultFor(await request({ type: "list_buffers" }));
+        },
+    });
+
+    pi.registerTool({
+        name: "open_file",
+        label: "Open file in Neovim",
+        description: "Open a file in Neovim, optionally selecting a source interval.",
+        promptSnippet: "Open a file in Neovim, optionally at a source interval",
+        promptGuidelines: [
+            "Use open_file when the user's file reference can be resolved from the conversation or listed buffers.",
+            "Ask the user to clarify rather than guess when an open_file target is unclear or ambiguous, and offer likely paths when available.",
+        ],
+        parameters: Type.Object(
+            {
+                path: Type.String({ minLength: 1, description: "File path to open" }),
+                selection: Type.Optional(
+                    Type.Object(
+                        {
+                            start_line: Type.Integer({ minimum: 1 }),
+                            start_col: Type.Integer({ minimum: 1 }),
+                            end_line: Type.Integer({ minimum: 1 }),
+                            end_col: Type.Integer({ minimum: 1 }),
+                            selection_type: StringEnum(["character", "line", "block"] as const),
+                        },
+                        { additionalProperties: false },
+                    ),
+                ),
+            },
+            { additionalProperties: false },
+        ),
+        async execute(_toolCallId, params) {
+            const path = params.path;
+            if (typeof path !== "string" || path.length === 0) {
+                throw new Error("path must be a non-empty string");
+            }
+            const selection = params.selection as SourceInterval | undefined;
+            return resultFor(
+                await request({ type: "open_file", path, ...(selection ? { selection } : {}) }),
+            );
+        },
+    });
 
     pi.on("session_start", async (_event, ctx) => {
         context = ctx;
         if (!socketPath) return;
-        connection = await connectProtocolSocket({
-            socketPath,
-            handleRequest: createRequestHandler(pi, () => {
-                if (!context) throw new Error("Pi session context is unavailable");
-                return context;
-            }),
-        });
+        try {
+            connection = await connectProtocolSocket({
+                socketPath,
+                handleRequest: createRequestHandler(pi, () => {
+                    if (!context) throw new Error("Pi session context is unavailable");
+                    return context;
+                }),
+            });
+            connectionError = undefined;
+        } catch (error) {
+            connection = undefined;
+            connectionError = error;
+        }
     });
 
     pi.on("session_shutdown", async () => {

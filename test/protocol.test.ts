@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, test } from "node:test";
 import { connectProtocolSocket } from "../pi/protocol.ts";
-import { createRequestHandler } from "../pi/pi-nvim.ts";
+import piNvimExtension, { createRequestHandler } from "../pi/pi-nvim.ts";
 
 const servers: Array<{ close: () => Promise<void> }> = [];
 
@@ -225,6 +225,146 @@ test("pastes selection without submitting and reports unavailable editor", async
             }),
         /unavailable/,
     );
+});
+
+test("registers Neovim tools and forwards their calls over the session socket", async () => {
+    const socketPath = path.join(os.tmpdir(), `pi-nvim-tools-${process.pid}-${Math.random()}.sock`);
+    const received: any[] = [];
+    const listener = net.createServer((socket) => {
+        let pending = "";
+        socket.setEncoding("utf8");
+        socket.on("data", (chunk) => {
+            pending += chunk;
+            let newline;
+            while ((newline = pending.indexOf("\n")) !== -1) {
+                const request = JSON.parse(pending.slice(0, newline));
+                pending = pending.slice(newline + 1);
+                received.push(request);
+                if (request.path === "missing.ts") {
+                    socket.write(
+                        `${JSON.stringify({ id: request.id, ok: false, error: "not found" })}\n`,
+                    );
+                    continue;
+                }
+                const result =
+                    request.type === "list_buffers" ? [{ buffer_id: 2, path: "src/a.ts" }] : {};
+                socket.write(`${JSON.stringify({ id: request.id, ok: true, result })}\n`);
+            }
+        });
+    });
+    await new Promise<void>((resolve, reject) => {
+        listener.once("error", reject);
+        listener.listen(socketPath, resolve);
+    });
+    servers.push({ close: () => new Promise((resolve) => listener.close(() => resolve())) });
+
+    const previousSocket = process.env.PI_NVIM_SOCKET;
+    process.env.PI_NVIM_SOCKET = socketPath;
+    const tools = new Map<string, any>();
+    const handlers = new Map<string, (...args: any[]) => unknown>();
+    const pi = {
+        registerTool: (tool: any) => tools.set(tool.name, tool),
+        on: (event: string, handler: (...args: any[]) => unknown) => handlers.set(event, handler),
+        sendUserMessage: async () => {},
+    };
+    try {
+        piNvimExtension(pi as any);
+        assert.deepEqual([...tools.keys()], ["list_buffers", "open_file"]);
+        const listSchema = tools.get("list_buffers").parameters;
+        const openSchema = tools.get("open_file").parameters;
+        assert.equal(listSchema.type, "object");
+        assert.deepEqual(listSchema.properties, {});
+        assert.equal(openSchema.type, "object");
+        assert.deepEqual(openSchema.required, ["path"]);
+        assert.equal(openSchema.properties.path.minLength, 1);
+        assert.equal(openSchema.properties.selection.properties.start_line.type, "integer");
+        assert.deepEqual(openSchema.properties.selection.properties.selection_type.enum, [
+            "character",
+            "line",
+            "block",
+        ]);
+        assert.match(tools.get("open_file").promptGuidelines.join(" "), /ambiguous/);
+        await handlers.get("session_start")?.(
+            {},
+            {
+                isIdle: () => true,
+                ui: { getEditorText: () => "", pasteToEditor: () => {} },
+            },
+        );
+
+        const buffers = await tools.get("list_buffers").execute("call-1", {});
+        assert.deepEqual(buffers.details, [{ buffer_id: 2, path: "src/a.ts" }]);
+        const opened = await tools.get("open_file").execute("call-2", {
+            path: "src/a.ts",
+            selection: {
+                start_line: 1,
+                start_col: 2,
+                end_line: 3,
+                end_col: 4,
+                selection_type: "line",
+            },
+        });
+        assert.deepEqual(opened.details, {});
+        assert.deepEqual(
+            received.map(({ id, ...request }) => request),
+            [
+                { type: "list_buffers" },
+                {
+                    type: "open_file",
+                    path: "src/a.ts",
+                    selection: {
+                        start_line: 1,
+                        start_col: 2,
+                        end_line: 3,
+                        end_col: 4,
+                        selection_type: "line",
+                    },
+                },
+            ],
+        );
+        await assert.rejects(
+            () => tools.get("open_file").execute("call-3", { path: "missing.ts" }),
+            /not found/,
+        );
+        await handlers.get("session_shutdown")?.();
+        await assert.rejects(() => tools.get("list_buffers").execute("call-4", {}), /unavailable/);
+    } finally {
+        if (previousSocket === undefined) delete process.env.PI_NVIM_SOCKET;
+        else process.env.PI_NVIM_SOCKET = previousSocket;
+        await handlers.get("session_shutdown")?.();
+    }
+});
+
+test("allows startup when the Neovim socket is unavailable", async () => {
+    const previousSocket = process.env.PI_NVIM_SOCKET;
+    process.env.PI_NVIM_SOCKET = path.join(
+        os.tmpdir(),
+        `pi-nvim-unavailable-${process.pid}-${Math.random()}.sock`,
+    );
+    const tools = new Map<string, any>();
+    const handlers = new Map<string, (...args: any[]) => unknown>();
+    try {
+        piNvimExtension({
+            registerTool: (tool: any) => tools.set(tool.name, tool),
+            on: (event: string, handler: (...args: any[]) => unknown) =>
+                handlers.set(event, handler),
+            sendUserMessage: async () => {},
+        } as any);
+        await assert.doesNotReject(() =>
+            handlers.get("session_start")?.(
+                {},
+                {
+                    isIdle: () => true,
+                    ui: { getEditorText: () => "", pasteToEditor: () => {} },
+                },
+            ),
+        );
+        await assert.rejects(() => tools.get("list_buffers").execute("call-1", {}), /unavailable/);
+    } finally {
+        if (previousSocket === undefined) delete process.env.PI_NVIM_SOCKET;
+        else process.env.PI_NVIM_SOCKET = previousSocket;
+        await handlers.get("session_shutdown")?.();
+    }
 });
 
 test("rejects unsupported request types", async () => {
