@@ -7,10 +7,12 @@ The Neovim plugin owns and listens on a Unix-domain socket and supplies its path
 line, terminated by `\n`. A JSON object may span socket chunks; a chunk may contain multiple
 messages. There is no protocol message-size limit.
 
-Every request has a non-empty string or numeric `id` and a `type`. The extension sends one response
-for each valid-ID request after the operation succeeds or fails. The response echoes the ID.
-Messages are processed in stream order on each connection. There are no unsolicited messages and no
-version handshake.
+Either peer may send a request. Every request has a non-empty string or numeric `id` and a `type`;
+the receiver returns one correlated response after the operation succeeds or fails. Responses echo
+the request ID and have either `ok: true` with a `result`, or `ok: false` with an `error`. Each
+peer tracks its own outstanding request IDs. Incoming requests are processed in stream order per
+connection; responses resolve the matching outstanding request and are not dispatched as requests.
+Unmatched responses are ignored. There are no unsolicited messages and no version handshake.
 
 ## Requests and responses
 
@@ -18,32 +20,74 @@ version handshake.
 
 ```json
 {
-  "id": "req-1",
-  "type": "submit_prompt",
-  "prompt": "Explain this function"
+    "id": "req-1",
+    "type": "submit_prompt",
+    "prompt": "Explain this function"
 }
 ```
 
 `prompt` is the complete user prompt. The extension starts a turn immediately when Pi is idle. If Pi
 is busy, it queues the prompt as a follow-up.
 
+### List open buffers
+
+```json
+{
+    "id": "pi-1",
+    "type": "list_buffers"
+}
+```
+
+Pi sends this request to Neovim. The successful result is an array containing only listed buffers;
+each item includes `buffer_id` (the Neovim buffer number) and `path`.
+
+```json
+{
+    "id": "pi-1",
+    "ok": true,
+    "result": [{ "buffer_id": 7, "path": "src/main.lua" }]
+}
+```
+
+### Open a file
+
+```json
+{
+    "id": "pi-2",
+    "type": "open_file",
+    "path": "src/main.lua",
+    "selection": {
+        "start_line": 3,
+        "start_col": 1,
+        "end_line": 4,
+        "end_col": 9,
+        "selection_type": "line"
+    }
+}
+```
+
+Pi sends this request to Neovim. `path` is required and non-empty. `selection` is optional; when supplied, its
+1-based start/end line and column coordinates and `selection_type` (`character`, `line`, or `block`)
+follow the Visual-selection conventions. Omit `selection` to open without selecting an interval. A
+successful open returns an empty object.
+
 ### Insert a visual selection
 
-```json 
+```json
 {
-  "id": "req-2",
-  "type": "insert_selection",
-  "text": "selected text",
-  "selection": {
-    "buffer_id": 7,
-    "path": "src/main.lua",
-    "buffer_name": "main.lua",
-    "start_line": 3,
-    "start_col": 1,
-    "end_line": 4,
-    "end_col": 9,
-    "selection_type": "line"
-  }
+    "id": "req-2",
+    "type": "insert_selection",
+    "text": "selected text",
+    "selection": {
+        "buffer_id": 7,
+        "path": "src/main.lua",
+        "buffer_name": "main.lua",
+        "start_line": 3,
+        "start_col": 1,
+        "end_line": 4,
+        "end_col": 9,
+        "selection_type": "line"
+    }
 }
 ```
 
@@ -58,30 +102,31 @@ submit the editor contents. `selection` contains the source buffer identity (`bu
 
 ```json
 {
-  "id": "req-1",
-  "ok": true,
-  "result": {}
+    "id": "req-1",
+    "ok": true,
+    "result": {}
 }
 ```
 
 ### Failure
 
-```json 
+```json
 {
-  "id": "req-2",
-  "ok": false,
-  "error": "Pi input editor is unavailable"
+    "id": "req-2",
+    "ok": false,
+    "error": "Pi input editor is unavailable"
 }
 ```
 
-The extension reports validation, unsupported-type, editor-availability, insertion, and
-prompt-submission failures this way. For malformed JSON, it sends a failure when it can recover a
-valid ID from the input line. It closes neither the Pi process nor the connection merely because a
-request fails. A request without a recoverable ID cannot receive a correlated response.
+The receiver reports validation and operation failures this way. For malformed JSON, it sends a
+failure when it can recover a valid ID from the input line. It closes neither process nor connection
+merely because a request fails. A request without a recoverable ID cannot receive a correlated
+response. A response with an unknown ID is ignored.
 
 ## Operation completion
 
-A success response means the extension API call completed successfully: prompt submission was
-accepted by Pi (including queueing a follow-up), or selection text was pasted into the editor. A
-failure response communicates that the requested operation could not be completed. Responses are
-serialized in request order per connection.
+A success response means the requested operation completed: prompt submission was accepted by Pi
+(including queueing a follow-up), selection text was pasted into the editor, listed buffers were
+returned, or the requested file was opened. A failure response communicates that the requested
+operation could not be completed. Each receiver serializes responses to incoming requests in their
+request order; independently initiated requests are correlated by ID and may complete asynchronously.

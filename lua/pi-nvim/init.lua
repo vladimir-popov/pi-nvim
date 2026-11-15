@@ -91,8 +91,17 @@ local function fail_connect_waiters(message)
     end
 end
 
+--- Fails and clears requests waiting for a response from Pi.
+local function fail_pending_requests(message)
+    for id, callback in pairs(state.pending or {}) do
+        state.pending[id] = nil
+        callback(message)
+    end
+end
+
 --- Closes active socket handles, removes the socket file, and resets connection state.
 local function close_socket()
+    fail_pending_requests("Pi–Neovim socket closed")
     if state.client then
         state.client:close()
         state.client = nil
@@ -147,6 +156,8 @@ local function create_socket()
                 notify("socket read error: " .. read_err, vim.log.levels.ERROR)
             end
             if not chunk then
+                state.connected = false
+                fail_pending_requests(read_err or "Pi–Neovim socket closed")
                 return
             end
             pending = pending .. chunk
@@ -157,11 +168,29 @@ local function create_socket()
                 end
                 local line = pending:sub(1, newline - 1)
                 pending = pending:sub(newline + 1)
-                local ok, response = pcall(vim.json.decode, line)
-                if ok and response.id and state.pending and state.pending[response.id] then
-                    local cb = state.pending[response.id]
-                    state.pending[response.id] = nil
-                    cb(response.error)
+                local ok, message = pcall(vim.json.decode, line)
+                if
+                    ok
+                    and type(message) == "table"
+                    and message.id ~= nil
+                    and type(message.ok) == "boolean"
+                then
+                    local callback = state.pending and state.pending[message.id]
+                    if callback then
+                        state.pending[message.id] = nil
+                        callback(message.ok and nil or message.error, message.result)
+                    end
+                elseif
+                    ok
+                    and type(message) == "table"
+                    and message.id ~= nil
+                    and type(message.type) == "string"
+                then
+                    client:write(vim.json.encode({
+                        id = message.id,
+                        ok = false,
+                        error = "Unsupported request type: " .. message.type,
+                    }) .. "\n")
                 end
             end
         end)

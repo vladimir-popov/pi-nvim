@@ -34,7 +34,8 @@ async function connect(handler: (request: any) => unknown) {
         handleRequest: handler,
     });
     while (!peer) await new Promise((resolve) => setTimeout(resolve, 1));
-    await connected;
+    const connection = await connected;
+    Object.assign(peer, { protocol: connection });
     return peer;
 }
 
@@ -66,6 +67,91 @@ test("parses chunked JSONL and returns correlated responses in order", async () 
         { id: "b", ok: true, result: { echoed: 2 } },
     ]);
     socket.destroy();
+});
+
+test("sends outbound requests and resolves their correlated responses", async () => {
+    const socket = await connect(() => ({}));
+    const responses = readLines(socket, 1);
+    const result = socket.protocol.request({ type: "list_buffers" });
+    const [request] = await responses;
+    assert.equal(request.type, "list_buffers");
+    assert.match(request.id, /^pi-\d+$/);
+    socket.write(
+        `${JSON.stringify({ id: request.id, ok: true, result: [{ buffer_id: 3, path: "src/a.ts" }] })}\n`,
+    );
+    assert.deepEqual(await result, [{ buffer_id: 3, path: "src/a.ts" }]);
+    socket.destroy();
+});
+
+test("rejects outbound requests on correlated errors and ignores unknown responses", async () => {
+    const socket = await connect(() => assert.fail("responses are not requests"));
+    const responses = readLines(socket, 1);
+    const result = socket.protocol.request({
+        type: "open_file",
+        path: "src/a.ts",
+        selection: {
+            start_line: 2,
+            start_col: 3,
+            end_line: 4,
+            end_col: 5,
+            selection_type: "block",
+        },
+    });
+    const [request] = await responses;
+    assert.equal(request.path, "src/a.ts");
+    assert.deepEqual(request.selection, {
+        start_line: 2,
+        start_col: 3,
+        end_line: 4,
+        end_col: 5,
+        selection_type: "block",
+    });
+    socket.write(`${JSON.stringify({ id: "unmatched", ok: true, result: {} })}\n`);
+    socket.write(`${JSON.stringify({ id: request.id, ok: false, error: "not found" })}\n`);
+    await assert.rejects(result, /not found/);
+    socket.destroy();
+});
+
+test("validates outbound file paths and source intervals", async () => {
+    const socket = await connect(() => ({}));
+    await assert.rejects(
+        socket.protocol.request({ type: "open_file", path: "", selection: undefined }),
+        /path must be a non-empty string/,
+    );
+    await assert.rejects(
+        socket.protocol.request({
+            type: "open_file",
+            path: "src/a.ts",
+            selection: {
+                start_line: 0,
+                start_col: 1,
+                end_line: 1,
+                end_col: 1,
+                selection_type: "character",
+            },
+        }),
+        /start_line must be a positive integer/,
+    );
+    socket.destroy();
+});
+
+test("processes a received response before failing other requests on graceful shutdown", async () => {
+    const socket = await connect(() => ({}));
+    const requests = readLines(socket, 1);
+    const result = socket.protocol.request({ type: "list_buffers" });
+    const [request] = await requests;
+    socket.write(`${JSON.stringify({ id: request.id, ok: true, result: [] })}\n`);
+    socket.end();
+    assert.deepEqual(await result, []);
+});
+
+test("rejects pending outbound requests when the connection closes", async () => {
+    const socket = await connect(() => ({}));
+    const responses = readLines(socket, 1);
+    const result = socket.protocol.request({ type: "open_file", path: "src/a.ts" });
+    await responses;
+    socket.destroy();
+    await assert.rejects(result, /closed/i);
 });
 
 test("returns a correlated error for malformed JSON when its id is recoverable", async () => {
