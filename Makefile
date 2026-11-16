@@ -23,7 +23,14 @@ test-node: check-node
 	@echo
 	@echo "Running Pi extension tests"
 	@echo
-	@$(NODE) --experimental-strip-types --test test/*.test.ts
+	@set -e; \
+	PI_INSTALL_ROOT="$${PI_MANAGED_INSTALL_ROOT:-$(HOME)/.pi/agent/install}"; \
+	PI_NODE_MODULES="$$(find "$$PI_INSTALL_ROOT/releases" -path '*/node_modules/@earendil-works/pi-ai/package.json' -print -quit 2>/dev/null | xargs -r dirname | xargs -r dirname | xargs -r dirname)"; \
+	if [ -z "$$PI_NODE_MODULES" ]; then echo "Could not find Pi dependencies under $$PI_INSTALL_ROOT/releases" >&2; exit 1; fi; \
+	if [ -e pi/node_modules ] || [ -L pi/node_modules ]; then echo "pi/node_modules already exists; refusing to replace it" >&2; exit 1; fi; \
+	trap 'rm -f pi/node_modules' EXIT; \
+	ln -s "$$PI_NODE_MODULES" pi/node_modules; \
+	$(NODE) --experimental-strip-types --test test/*.test.ts
 
 test-nvim: check-node
 	@echo

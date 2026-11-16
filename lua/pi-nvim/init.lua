@@ -485,7 +485,7 @@ end
 
 --- Captures the current Visual selection and sends it to Pi with source metadata.
 --- Starts the managed Pi session if needed; reports failure if it cannot be started.
-local function transfer_selection()
+local function transfer_selection(prompt)
     local buf = vim.api.nvim_get_current_buf()
     local start_pos, end_pos =
         vim.api.nvim_buf_get_mark(buf, "<"), vim.api.nvim_buf_get_mark(buf, ">")
@@ -519,7 +519,12 @@ local function transfer_selection()
         notify("failed to start Pi; selection was not transferred", vim.log.levels.ERROR)
         return
     end
-    socket_request({ type = "insert_selection", text = text, selection = meta }, function(err)
+    local request = { type = "insert_selection", text = text, selection = meta }
+    if prompt ~= "" then
+        request.type = "submit_selection_prompt"
+        request.prompt = prompt
+    end
+    socket_request(request, function(err)
         if err then
             notify(err, vim.log.levels.ERROR)
         end
@@ -535,7 +540,7 @@ function M.setup(options)
     state.config = config
     vim.api.nvim_create_user_command("Pi", function(opts)
         if opts.range > 0 then
-            transfer_selection()
+            transfer_selection(opts.args)
         elseif opts.args ~= "" then
             send_command(opts.args)
         elseif state.job and vim.fn.jobwait({ state.job }, 0)[1] == -1 then

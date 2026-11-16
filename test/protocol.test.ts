@@ -212,6 +212,34 @@ test("submits prompt and queues follow-up while busy", async () => {
     assert.deepEqual(sent, [["first"], ["next", { deliverAs: "followUp" }]]);
 });
 
+test("submits selected text with a prompt immediately", async () => {
+    const sent: unknown[][] = [];
+    const pi = { sendUserMessage: async (...args: unknown[]) => sent.push(args) };
+    const context = {
+        isIdle: () => true,
+        ui: { getEditorText: () => "", pasteToEditor: () => assert.fail("must not paste") },
+    };
+    const handler = createRequestHandler(pi, () => context);
+    await handler({
+        type: "submit_selection_prompt",
+        text: "selected",
+        prompt: "Explain this",
+        selection: {
+            buffer_id: 1,
+            path: "source.lua",
+            buffer_name: "source.lua",
+            start_line: 1,
+            start_col: 1,
+            end_line: 1,
+            end_col: 8,
+            selection_type: "character",
+        },
+    });
+    assert.deepEqual(sent, [[
+        `[Source: file "source.lua"; lines 1-1, columns 1-8; character-wise selection]\nselected\n\nExplain this`,
+    ]]);
+});
+
 test("pastes selection without submitting and reports unavailable editor", async () => {
     const pasted: string[] = [];
     const context = {
@@ -298,17 +326,23 @@ test("registers Neovim tools and forwards their calls over the session socket", 
     process.env.PI_NVIM_SOCKET = socketPath;
     const tools = new Map<string, any>();
     const commands = new Map<string, any>();
+    const shortcuts = new Map<string, any>();
     const handlers = new Map<string, (...args: any[]) => unknown>();
     const pi = {
         registerTool: (tool: any) => tools.set(tool.name, tool),
         registerCommand: (name: string, command: any) => commands.set(name, command),
+        registerShortcut: (shortcut: string, options: any) => shortcuts.set(shortcut, options),
         on: (event: string, handler: (...args: any[]) => unknown) => handlers.set(event, handler),
-        sendUserMessage: async () => {},
+        sendUserMessage: async (...args: unknown[]) => sent.push(args),
     };
+    const sent: unknown[][] = [];
     try {
         piNvimExtension(pi as any);
         assert.deepEqual([...tools.keys()], ["list_buffers", "open_file"]);
         assert.ok(commands.has("open"));
+        assert.ok(shortcuts.has("alt+o"));
+        await shortcuts.get("alt+o").handler();
+        assert.deepEqual(sent, [["/open", { expandPromptTemplates: true }]]);
         const listSchema = tools.get("list_buffers").parameters;
         const openSchema = tools.get("open_file").parameters;
         assert.equal(listSchema.type, "object");
@@ -460,6 +494,7 @@ test("allows startup when the Neovim socket is unavailable", async () => {
         piNvimExtension({
             registerTool: (tool: any) => tools.set(tool.name, tool),
             registerCommand: () => {},
+            registerShortcut: () => {},
             on: (event: string, handler: (...args: any[]) => unknown) =>
                 handlers.set(event, handler),
             sendUserMessage: async () => {},
