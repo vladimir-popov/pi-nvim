@@ -348,6 +348,21 @@ local function edit_buffer(request)
         error("operation range is out of bounds")
     end
     vim.api.nvim_buf_set_text(buf, sr, sc, er, ec, operation.replacement)
+
+    for _, tab in ipairs(vim.api.nvim_list_tabpages()) do
+        for _, win in ipairs(vim.api.nvim_tabpage_list_wins(tab)) do
+            if vim.api.nvim_win_get_buf(win) == buf then
+                vim.api.nvim_set_current_tabpage(tab)
+                vim.api.nvim_set_current_win(win)
+                return {}
+            end
+        end
+    end
+    local prior = state.prior
+    if prior and vim.api.nvim_win_is_valid(prior.win) then
+        vim.api.nvim_win_set_buf(prior.win, buf)
+        vim.api.nvim_set_current_win(prior.win)
+    end
     return {}
 end
 
