@@ -11,6 +11,13 @@ type SourceInterval = {
     end_col: number;
     selection_type: "character" | "line" | "block";
 };
+type EditOperation = {
+    start_row: number;
+    start_col: number;
+    end_row: number;
+    end_col: number;
+    replacement: string[];
+};
 type OutboundRequest =
     | { type: "list_buffers" }
     | {
@@ -18,7 +25,8 @@ type OutboundRequest =
           path: string;
           selection?: SourceInterval;
           cursor_line?: number;
-      };
+      }
+    | { type: "edit_buffer"; path: string | null; operations: EditOperation[] };
 type SocketCloseHandle = {
     close(): Promise<void>;
     request(request: OutboundRequest): Promise<unknown>;
@@ -155,6 +163,32 @@ async function processLine(
 
 function validateOutboundRequest(request: OutboundRequest): void {
     if (request.type === "list_buffers") return;
+    if (request.type === "edit_buffer") {
+        if (
+            request.path !== null &&
+            (typeof request.path !== "string" || request.path.length === 0)
+        ) {
+            throw new Error("edit_buffer path must be a non-empty string or null");
+        }
+        if (!Array.isArray(request.operations)) {
+            throw new Error("edit_buffer operations must be an array");
+        }
+        for (const [index, operation] of request.operations.entries()) {
+            if (!isRecord(operation)) throw new Error(`operations[${index}] must be an object`);
+            for (const field of ["start_row", "start_col", "end_row", "end_col"] as const) {
+                if (!Number.isInteger(operation[field]) || (operation[field] as number) < 0) {
+                    throw new Error(`operations[${index}].${field} must be a non-negative integer`);
+                }
+            }
+            if (
+                !Array.isArray(operation.replacement) ||
+                !operation.replacement.every((line) => typeof line === "string")
+            ) {
+                throw new Error(`operations[${index}].replacement must be an array of strings`);
+            }
+        }
+        return;
+    }
     if (typeof request.path !== "string" || request.path.length === 0) {
         throw new Error("open_file path must be a non-empty string");
     }

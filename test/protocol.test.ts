@@ -83,6 +83,35 @@ test("sends outbound requests and resolves their correlated responses", async ()
     socket.destroy();
 });
 
+test("sends valid edit-buffer requests and rejects malformed payloads", async () => {
+    const socket = await connect(() => ({}));
+    const responses = readLines(socket, 1);
+    const operations = [
+        { start_row: 0, start_col: 1, end_row: 0, end_col: 1, replacement: ["X"] },
+        { start_row: 1, start_col: 0, end_row: 2, end_col: 0, replacement: [] },
+    ];
+    const result = socket.protocol.request({ type: "edit_buffer", path: null, operations });
+    const [request] = await responses;
+    assert.equal(request.type, "edit_buffer");
+    assert.equal(request.path, null);
+    assert.deepEqual(request.operations, operations);
+    socket.write(`${JSON.stringify({ id: request.id, ok: true, result: {} })}\n`);
+    assert.deepEqual(await result, {});
+
+    const invalid: any[] = [
+        { type: "edit_buffer", path: "", operations: [] },
+        { type: "edit_buffer", path: undefined, operations: [] },
+        { type: "edit_buffer", path: null, operations: {} },
+        { type: "edit_buffer", path: "x", operations: [{ ...operations[0], start_col: -1 }] },
+        { type: "edit_buffer", path: "x", operations: [{ ...operations[0], replacement: [1] }] },
+        { type: "edit_buffer", path: "x", operations: [null] },
+    ];
+    for (const request of invalid) {
+        await assert.rejects(socket.protocol.request(request));
+    }
+    socket.destroy();
+});
+
 test("sends a cursor-line open request", async () => {
     const socket = await connect(() => ({}));
     const responses = readLines(socket, 1);
@@ -336,13 +365,19 @@ test("registers Neovim tools and forwards their calls over the session socket", 
     const sent: unknown[][] = [];
     try {
         piNvimExtension(pi as any);
-        assert.deepEqual([...tools.keys()], ["list_buffers", "open_file"]);
+        assert.deepEqual([...tools.keys()], ["list_buffers", "open_file", "edit_buffer"]);
         assert.ok(commands.has("open"));
         assert.ok(shortcuts.has("alt+o"));
         await shortcuts.get("alt+o").handler();
         assert.deepEqual(sent, [["/open", { expandPromptTemplates: true }]]);
         const listSchema = tools.get("list_buffers").parameters;
         const openSchema = tools.get("open_file").parameters;
+        const editTool = tools.get("edit_buffer");
+        const editSchema = editTool.parameters;
+        assert.deepEqual(editSchema.required, ["path", "operations"]);
+        assert.equal(editSchema.properties.path.anyOf[0].minLength, 1);
+        assert.match(editTool.description, /explicitly asks/);
+        assert.match(editTool.promptGuidelines.join(" "), /explicitly requested/);
         assert.equal(listSchema.type, "object");
         assert.deepEqual(listSchema.properties, {});
         assert.equal(openSchema.type, "object");
@@ -357,7 +392,10 @@ test("registers Neovim tools and forwards their calls over the session socket", 
         ]);
         assert.match(tools.get("open_file").promptGuidelines.join(" "), /ambiguous/);
         assert.match(tools.get("open_file").promptGuidelines.join(" "), /show, or display/);
-        assert.match(tools.get("open_file").promptGuidelines.join(" "), /Do not print the file contents/);
+        assert.match(
+            tools.get("open_file").promptGuidelines.join(" "),
+            /Do not print the file contents/,
+        );
         await handlers.get("session_start")?.(
             {},
             {
@@ -379,8 +417,45 @@ test("registers Neovim tools and forwards their calls over the session socket", 
             },
         });
         assert.deepEqual(opened.details, {});
+        const editOperations = [
+            { start_row: 0, start_col: 0, end_row: 0, end_col: 0, replacement: ["hello"] },
+        ];
+        const edited = await editTool.execute("call-edit", {
+            path: null,
+            operations: editOperations,
+        });
+        assert.deepEqual(edited.details, {});
+        await assert.rejects(() => editTool.execute("call-edit", { operations: editOperations }));
+        await assert.rejects(() =>
+            editTool.execute("call-edit", { path: "", operations: editOperations }),
+        );
+        await assert.rejects(() =>
+            editTool.execute("call-edit", {
+                path: "x",
+                operations: [{ ...editOperations[0], end_col: -1 }],
+            }),
+        );
         assert.deepEqual(
             received.map(({ id, ...request }) => request),
+            [
+                { type: "list_buffers" },
+                {
+                    type: "open_file",
+                    path: "src/a.ts",
+                    selection: {
+                        start_line: 1,
+                        start_col: 2,
+                        end_line: 3,
+                        end_col: 4,
+                        selection_type: "line",
+                    },
+                },
+                { type: "edit_buffer", path: null, operations: editOperations },
+            ],
+        );
+
+        assert.deepEqual(
+            received.slice(0, 2).map(({ id, ...request }) => request),
             [
                 { type: "list_buffers" },
                 {
@@ -407,7 +482,10 @@ test("registers Neovim tools and forwards their calls over the session socket", 
                         message: {
                             role: "assistant",
                             content: [
-                                { type: "text", text: "See [latest](src/latest.ts:8) and other.ts." },
+                                {
+                                    type: "text",
+                                    text: "See [latest](src/latest.ts:8) and other.ts.",
+                                },
                                 { type: "toolCall", arguments: { path: "secret.ts" } },
                             ],
                         },
@@ -424,19 +502,18 @@ test("registers Neovim tools and forwards their calls over the session socket", 
             },
         });
         assert.deepEqual(choices, ["src/latest.ts:8", "other.ts"]);
-        assert.deepEqual(
-            received.at(-1),
-            {
-                id: received.at(-1).id,
-                type: "open_file",
-                path: "src/latest.ts",
-                cursor_line: 8,
-            },
-        );
+        assert.deepEqual(received.at(-1), {
+            id: received.at(-1).id,
+            type: "open_file",
+            path: "src/latest.ts",
+            cursor_line: 8,
+        });
         const previousRequestCount = received.length;
         await commands.get("open").handler("", {
             sessionManager: {
-                getBranch: () => [{ type: "message", message: { role: "assistant", content: "No paths." } }],
+                getBranch: () => [
+                    { type: "message", message: { role: "assistant", content: "No paths." } },
+                ],
             },
             ui: {
                 select: async () => assert.fail("empty picker must not open"),
@@ -459,7 +536,9 @@ test("registers Neovim tools and forwards their calls over the session socket", 
         assert.equal(received.length, previousRequestCount);
         await commands.get("open").handler("", {
             sessionManager: {
-                getBranch: () => [{ type: "message", message: { role: "assistant", content: "missing.ts" } }],
+                getBranch: () => [
+                    { type: "message", message: { role: "assistant", content: "missing.ts" } },
+                ],
             },
             ui: {
                 select: async () => "missing.ts",
