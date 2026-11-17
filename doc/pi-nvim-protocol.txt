@@ -25,6 +25,43 @@ Submit a prompt                                    *pi-nvim-protocol-submit*
 `prompt` is the complete user prompt. The extension starts a turn immediately
 when Pi is idle. If Pi is busy, it queues the prompt as a follow-up.
 
+Edit a buffer                                      *pi-nvim-protocol-edit*
+
+  {
+    "id": "pi-3",
+    "type": "edit_buffer",
+    "path": "src/main.lua",
+    "operation": {
+      "start_row": 0,
+      "start_col": 0,
+      "end_row": 0,
+      "end_col": 5,
+      "replacement": ["local"]
+    }
+  }
+
+Pi sends this request to Neovim. Each invocation edits exactly one buffer. Use
+a non-empty `path` to target a named buffer; its file must exist and already
+be open in Neovim. Relative paths are resolved from the Pi session working
+directory. Use `path: null` only for the remembered source buffer that was
+active before entering the Pi window. It must still be valid, unnamed, and
+have normal `buftype`; the Pi buffer is never an eligible target. Missing
+files are not created.
+
+`operation` has `start_row`, `start_col`, `end_row`, `end_col`, and
+`replacement`. Each tool call performs exactly one edit operation on exactly
+one buffer; make separate calls for multiple edits. Rows are zero-based;
+columns are zero-based byte offsets, matching Neovim's buffer text API. The
+range is half-open, from the start position up to but not including the end.
+`replacement` is an array of UTF-8 strings, one per resulting line. An empty
+range inserts; an empty replacement array deletes the range. Out-of-bounds
+ranges fail. Byte offsets are not specially checked for UTF-8 code-point
+boundaries.
+
+Edits change only Neovim's in-memory buffer; they do not write to disk. The
+tool is intended only for edits the user explicitly requested. Success returns
+an empty object.
+
 Insert a visual selection                        *pi-nvim-protocol-selection*
 
   {
@@ -58,8 +95,8 @@ Failure                                           *pi-nvim-protocol-failure*
 
   { "id": "req-2", "ok": false, "error": "Pi input editor is unavailable" }
 
-The extension reports validation, unsupported-type, editor-availability,
-insertion, and prompt-submission failures this way. For malformed JSON, it
+The receiver reports validation and operation failures this way, including
+buffer-edit range and target errors. For malformed JSON, it
 sends a failure when it can recover a valid ID from the input line. It closes
 neither the Pi process nor the connection merely because a request fails. A
 request without a recoverable ID cannot receive a correlated response.
@@ -68,8 +105,9 @@ Operation completion                                *pi-nvim-protocol-completion
 
 A success response means the extension API call completed successfully:
 prompt submission was accepted by Pi (including queueing a follow-up), or
-selection text was pasted into the editor. A failure response communicates
-that the requested operation could not be completed. Responses are serialized
+selection text was pasted into the editor, or buffer edits were applied in
+memory. A failure response communicates that the requested operation could not
+be completed. Responses are serialized
 in request order per connection.
 
  vim:tw=78:ts=8:ft=help:norl:

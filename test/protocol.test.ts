@@ -86,25 +86,28 @@ test("sends outbound requests and resolves their correlated responses", async ()
 test("sends valid edit-buffer requests and rejects malformed payloads", async () => {
     const socket = await connect(() => ({}));
     const responses = readLines(socket, 1);
-    const operations = [
-        { start_row: 0, start_col: 1, end_row: 0, end_col: 1, replacement: ["X"] },
-        { start_row: 1, start_col: 0, end_row: 2, end_col: 0, replacement: [] },
-    ];
-    const result = socket.protocol.request({ type: "edit_buffer", path: null, operations });
+    const operation = {
+        start_row: 0,
+        start_col: 1,
+        end_row: 0,
+        end_col: 1,
+        replacement: ["X"],
+    };
+    const result = socket.protocol.request({ type: "edit_buffer", path: null, operation });
     const [request] = await responses;
     assert.equal(request.type, "edit_buffer");
     assert.equal(request.path, null);
-    assert.deepEqual(request.operations, operations);
+    assert.deepEqual(request.operation, operation);
     socket.write(`${JSON.stringify({ id: request.id, ok: true, result: {} })}\n`);
     assert.deepEqual(await result, {});
 
     const invalid: any[] = [
-        { type: "edit_buffer", path: "", operations: [] },
-        { type: "edit_buffer", path: undefined, operations: [] },
-        { type: "edit_buffer", path: null, operations: {} },
-        { type: "edit_buffer", path: "x", operations: [{ ...operations[0], start_col: -1 }] },
-        { type: "edit_buffer", path: "x", operations: [{ ...operations[0], replacement: [1] }] },
-        { type: "edit_buffer", path: "x", operations: [null] },
+        { type: "edit_buffer", path: "", operation },
+        { type: "edit_buffer", path: undefined, operation },
+        { type: "edit_buffer", path: null, operation: [] },
+        { type: "edit_buffer", path: "x", operation: { ...operation, start_col: -1 } },
+        { type: "edit_buffer", path: "x", operation: { ...operation, replacement: [1] } },
+        { type: "edit_buffer", path: "x", operation: null },
     ];
     for (const request of invalid) {
         await assert.rejects(socket.protocol.request(request));
@@ -374,7 +377,7 @@ test("registers Neovim tools and forwards their calls over the session socket", 
         const openSchema = tools.get("open_file").parameters;
         const editTool = tools.get("edit_buffer");
         const editSchema = editTool.parameters;
-        assert.deepEqual(editSchema.required, ["path", "operations"]);
+        assert.deepEqual(editSchema.required, ["path", "operation"]);
         assert.equal(editSchema.properties.path.anyOf[0].minLength, 1);
         assert.match(editTool.description, /explicitly asks/);
         assert.match(editTool.promptGuidelines.join(" "), /explicitly requested/);
@@ -417,22 +420,26 @@ test("registers Neovim tools and forwards their calls over the session socket", 
             },
         });
         assert.deepEqual(opened.details, {});
-        const editOperations = [
-            { start_row: 0, start_col: 0, end_row: 0, end_col: 0, replacement: ["hello"] },
-        ];
+        const editOperation = {
+            start_row: 0,
+            start_col: 0,
+            end_row: 0,
+            end_col: 0,
+            replacement: ["hello"],
+        };
         const edited = await editTool.execute("call-edit", {
             path: null,
-            operations: editOperations,
+            operation: editOperation,
         });
         assert.deepEqual(edited.details, {});
-        await assert.rejects(() => editTool.execute("call-edit", { operations: editOperations }));
+        await assert.rejects(() => editTool.execute("call-edit", { path: null }));
         await assert.rejects(() =>
-            editTool.execute("call-edit", { path: "", operations: editOperations }),
+            editTool.execute("call-edit", { path: "", operation: editOperation }),
         );
         await assert.rejects(() =>
             editTool.execute("call-edit", {
                 path: "x",
-                operations: [{ ...editOperations[0], end_col: -1 }],
+                operation: { ...editOperation, end_col: -1 },
             }),
         );
         assert.deepEqual(
@@ -450,7 +457,7 @@ test("registers Neovim tools and forwards their calls over the session socket", 
                         selection_type: "line",
                     },
                 },
-                { type: "edit_buffer", path: null, operations: editOperations },
+                { type: "edit_buffer", path: null, operation: editOperation },
             ],
         );
 

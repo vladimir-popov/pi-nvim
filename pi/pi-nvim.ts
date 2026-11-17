@@ -179,7 +179,7 @@ export default function piNvimExtension(pi: PiApi): void {
                   selection?: SourceInterval;
                   cursor_line?: number;
               }
-            | { type: "edit_buffer"; path: string | null; operations: EditOperation[] },
+            | { type: "edit_buffer"; path: string | null; operation: EditOperation },
     ) => {
         if (!connection) {
             const reason = connectionError instanceof Error ? `: ${connectionError.message}` : "";
@@ -266,8 +266,8 @@ export default function piNvimExtension(pi: PiApi): void {
         promptSnippet: "Edit a Neovim buffer as explicitly requested by the user",
         promptGuidelines: [
             "Use edit_buffer only for edits the user explicitly requested; do not infer permission to edit from a request to explain, review, or suggest changes.",
-            "Each call edits exactly one buffer. Use a non-empty path for a named buffer, or null only for the remembered unnamed source buffer.",
-            "Operations run in order. Rows are zero-based, columns are byte offsets, and the end position is exclusive; an empty range inserts and an empty replacement deletes.",
+            "Each call applies exactly one edit operation to one buffer. Use a non-empty path for a named buffer, or null only for the remembered unnamed source buffer.",
+            "Rows are zero-based, columns are byte offsets, and the end position is exclusive; an empty range inserts and an empty replacement deletes.",
         ],
         parameters: Type.Object(
             {
@@ -275,17 +275,15 @@ export default function piNvimExtension(pi: PiApi): void {
                     Type.String({ minLength: 1, description: "Named buffer path" }),
                     Type.Null({ description: "Use only the remembered unnamed source buffer" }),
                 ]),
-                operations: Type.Array(
-                    Type.Object(
-                        {
-                            start_row: Type.Integer({ minimum: 0 }),
-                            start_col: Type.Integer({ minimum: 0 }),
-                            end_row: Type.Integer({ minimum: 0 }),
-                            end_col: Type.Integer({ minimum: 0 }),
-                            replacement: Type.Array(Type.String()),
-                        },
-                        { additionalProperties: false },
-                    ),
+                operation: Type.Object(
+                    {
+                        start_row: Type.Integer({ minimum: 0 }),
+                        start_col: Type.Integer({ minimum: 0 }),
+                        end_row: Type.Integer({ minimum: 0 }),
+                        end_col: Type.Integer({ minimum: 0 }),
+                        replacement: Type.Array(Type.String()),
+                    },
+                    { additionalProperties: false },
                 ),
             },
             { additionalProperties: false },
@@ -297,29 +295,24 @@ export default function piNvimExtension(pi: PiApi): void {
             ) {
                 throw new Error("path must be a non-empty string or null");
             }
-            if (!Array.isArray(params.operations)) throw new Error("operations must be an array");
-            const operations = params.operations as EditOperation[];
-            for (const [index, operation] of operations.entries()) {
-                if (!isRecord(operation)) throw new Error(`operations[${index}] must be an object`);
-                for (const field of ["start_row", "start_col", "end_row", "end_col"] as const) {
-                    if (!Number.isInteger(operation[field]) || (operation[field] as number) < 0) {
-                        throw new Error(
-                            `operations[${index}].${field} must be a non-negative integer`,
-                        );
-                    }
+            const operation = params.operation;
+            if (!isRecord(operation)) throw new Error("operation must be an object");
+            for (const field of ["start_row", "start_col", "end_row", "end_col"] as const) {
+                if (!Number.isInteger(operation[field]) || (operation[field] as number) < 0) {
+                    throw new Error(`operation.${field} must be a non-negative integer`);
                 }
-                if (
-                    !Array.isArray(operation.replacement) ||
-                    !operation.replacement.every((line) => typeof line === "string")
-                ) {
-                    throw new Error(`operations[${index}].replacement must be an array of strings`);
-                }
+            }
+            if (
+                !Array.isArray(operation.replacement) ||
+                !operation.replacement.every((line) => typeof line === "string")
+            ) {
+                throw new Error("operation.replacement must be an array of strings");
             }
             return resultFor(
                 await request({
                     type: "edit_buffer",
                     path: params.path as string | null,
-                    operations,
+                    operation: operation as EditOperation,
                 }),
             );
         },

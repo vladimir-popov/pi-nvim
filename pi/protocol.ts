@@ -26,7 +26,7 @@ type OutboundRequest =
           selection?: SourceInterval;
           cursor_line?: number;
       }
-    | { type: "edit_buffer"; path: string | null; operations: EditOperation[] };
+    | { type: "edit_buffer"; path: string | null; operation: EditOperation };
 type SocketCloseHandle = {
     close(): Promise<void>;
     request(request: OutboundRequest): Promise<unknown>;
@@ -170,22 +170,18 @@ function validateOutboundRequest(request: OutboundRequest): void {
         ) {
             throw new Error("edit_buffer path must be a non-empty string or null");
         }
-        if (!Array.isArray(request.operations)) {
-            throw new Error("edit_buffer operations must be an array");
+        const operation = request.operation;
+        if (!isRecord(operation)) throw new Error("edit_buffer operation must be an object");
+        for (const field of ["start_row", "start_col", "end_row", "end_col"] as const) {
+            if (!Number.isInteger(operation[field]) || (operation[field] as number) < 0) {
+                throw new Error(`operation.${field} must be a non-negative integer`);
+            }
         }
-        for (const [index, operation] of request.operations.entries()) {
-            if (!isRecord(operation)) throw new Error(`operations[${index}] must be an object`);
-            for (const field of ["start_row", "start_col", "end_row", "end_col"] as const) {
-                if (!Number.isInteger(operation[field]) || (operation[field] as number) < 0) {
-                    throw new Error(`operations[${index}].${field} must be a non-negative integer`);
-                }
-            }
-            if (
-                !Array.isArray(operation.replacement) ||
-                !operation.replacement.every((line) => typeof line === "string")
-            ) {
-                throw new Error(`operations[${index}].replacement must be an array of strings`);
-            }
+        if (
+            !Array.isArray(operation.replacement) ||
+            !operation.replacement.every((line) => typeof line === "string")
+        ) {
+            throw new Error("operation.replacement must be an array of strings");
         }
         return;
     }

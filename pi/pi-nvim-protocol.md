@@ -67,6 +67,40 @@ when supplied, Neovim places the cursor on that line without creating a Visual s
 combine `selection` and `cursor_line`. Omit both to open without positioning. A successful open
 returns an empty object.
 
+### Edit a buffer
+
+```json
+{
+    "id": "pi-3",
+    "type": "edit_buffer",
+    "path": "src/main.lua",
+    "operation": {
+        "start_row": 0,
+        "start_col": 0,
+        "end_row": 0,
+        "end_col": 5,
+        "replacement": ["local"]
+    }
+}
+```
+
+Pi sends this request to Neovim. Each invocation edits exactly one buffer. Use a non-empty `path`
+to target a named buffer; the file must exist and already be open in Neovim. Relative paths are
+resolved from the Pi session working directory. Use `path: null` only for the remembered source
+buffer that was active before entering the Pi window. That buffer must still be valid, unnamed, and
+have normal `buftype`; the Pi buffer is never an eligible target. Missing files are not created.
+
+`operation` has `start_row`, `start_col`, `end_row`, `end_col`, and `replacement`. Each tool call
+performs exactly one edit operation on exactly one buffer; make separate calls for multiple edits.
+Rows are zero-based; columns are zero-based byte offsets, matching Neovim's buffer text API. The
+range is half-open, from the start position up to but not including the end position. `replacement`
+is an array of UTF-8 strings (one string per resulting line). An empty range inserts; an empty
+replacement array deletes the range. Out-of-bounds ranges fail the request. Byte offsets are not
+specially checked for UTF-8 code-point boundaries.
+
+Edits change only Neovim's in-memory buffer; they do not write to disk. The `edit_buffer` tool is
+intended only for edits the user explicitly requested. A successful request returns an empty object.
+
 ### Insert a visual selection
 
 ```json
@@ -124,6 +158,6 @@ response. A response with an unknown ID is ignored.
 
 A success response means the requested operation completed: prompt submission was accepted by Pi
 (including queueing a follow-up), selection text was pasted into the editor, listed buffers were
-returned, or the requested file was opened. A failure response communicates that the requested
-operation could not be completed. Each receiver serializes responses to incoming requests in their
+returned, the requested file was opened, or the requested buffer edits were applied in
+memory. A failure response communicates that the requested operation could not be completed. Each receiver serializes responses to incoming requests in their
 request order; independently initiated requests are correlated by ID and may complete asynchronously.

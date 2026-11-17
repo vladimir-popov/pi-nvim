@@ -75,39 +75,90 @@ if (mode === "no-connect" || !socketPath) {
                     })}\n`,
                 );
             }
-            socket.write(`${JSON.stringify({
-                id: "edit-valid",
-                type: "edit_buffer",
-                path,
-                operations: [
-                    { start_row: 0, start_col: 0, end_row: 0, end_col: 5, replacement: ["FIRST"] },
-                    { start_row: 1, start_col: 0, end_row: 1, end_col: 0, replacement: ["added"] },
-                ],
-            })}\n`);
-            socket.write(`${JSON.stringify({
-                id: "edit-partial",
-                type: "edit_buffer",
-                path,
-                operations: [
-                    { start_row: 0, start_col: 0, end_row: 0, end_col: 5, replacement: ["changed"] },
-                    { start_row: 90, start_col: 0, end_row: 90, end_col: 0, replacement: ["bad"] },
-                ],
-            })}\n`);
-            socket.write(`${JSON.stringify({
-                id: "edit-stale-range",
-                type: "edit_buffer",
-                path,
-                operations: [
-                    { start_row: 0, start_col: 0, end_row: 2, end_col: 0, replacement: ["shrunk"] },
-                    { start_row: 2, start_col: 0, end_row: 2, end_col: 0, replacement: ["bad"] },
-                ],
-            })}\n`);
-            socket.write(`${JSON.stringify({
-                id: "edit-oob",
-                type: "edit_buffer",
-                path,
-                operations: [{ start_row: 90, start_col: 0, end_row: 90, end_col: 0, replacement: ["bad"] }],
-            })}\n`);
+            socket.write(
+                `${JSON.stringify({
+                    id: "edit-valid",
+                    type: "edit_buffer",
+                    path,
+                    operation: {
+                        start_row: 0,
+                        start_col: 0,
+                        end_row: 0,
+                        end_col: 5,
+                        replacement: ["FIRST"],
+                    },
+                })}\n`,
+            );
+            socket.write(
+                `${JSON.stringify({
+                    id: "edit-second",
+                    type: "edit_buffer",
+                    path,
+                    operation: {
+                        start_row: 1,
+                        start_col: 0,
+                        end_row: 1,
+                        end_col: 0,
+                        replacement: ["added"],
+                    },
+                })}\n`,
+            );
+            socket.write(
+                `${JSON.stringify({
+                    id: "edit-api-error",
+                    type: "edit_buffer",
+                    path,
+                    operation: {
+                        start_row: 0,
+                        start_col: 0,
+                        end_row: 0,
+                        end_col: 0,
+                        replacement: ["bad\ntext"],
+                    },
+                })}\n`,
+            );
+            socket.write(
+                `${JSON.stringify({
+                    id: "edit-oob",
+                    type: "edit_buffer",
+                    path,
+                    operation: {
+                        start_row: 90,
+                        start_col: 0,
+                        end_row: 90,
+                        end_col: 0,
+                        replacement: ["bad"],
+                    },
+                })}\n`,
+            );
+            socket.write(
+                `${JSON.stringify({
+                    id: "edit-oob-same-row-end",
+                    type: "edit_buffer",
+                    path,
+                    operation: {
+                        start_row: 0,
+                        start_col: 0,
+                        end_row: 0,
+                        end_col: 100,
+                        replacement: ["bad"],
+                    },
+                })}\n`,
+            );
+            socket.write(
+                `${JSON.stringify({
+                    id: "edit-oob-multiline-end",
+                    type: "edit_buffer",
+                    path,
+                    operation: {
+                        start_row: 0,
+                        start_col: 0,
+                        end_row: 1,
+                        end_col: 100,
+                        replacement: ["bad"],
+                    },
+                })}\n`,
+            );
         }
     });
     socket.on("data", (chunk: string) => {

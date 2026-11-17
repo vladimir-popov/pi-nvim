@@ -314,78 +314,40 @@ local function edit_buffer(request)
         end
     end
 
-    if type(request.operations) ~= "table" or #request.operations == 0 then
-        error("operations must be a non-empty array")
+    local operation = request.operation
+    if type(operation) ~= "table" then
+        error("operation must be an object")
     end
-    local simulated = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
-    for index, operation in ipairs(request.operations) do
-        if type(operation) ~= "table" then
-            error("operation " .. index .. " must be an object")
+    for _, key in ipairs({ "start_row", "start_col", "end_row", "end_col" }) do
+        local value = operation[key]
+        if type(value) ~= "number" or value < 0 or value % 1 ~= 0 then
+            error("operation." .. key .. " must be a non-negative integer")
         end
-        for _, key in ipairs({ "start_row", "start_col", "end_row", "end_col" }) do
-            local value = operation[key]
-            if type(value) ~= "number" or value < 0 or value % 1 ~= 0 then
-                error("operation " .. index .. "." .. key .. " must be a non-negative integer")
-            end
-        end
-        if type(operation.replacement) ~= "table" then
-            error("operation " .. index .. ".replacement must be an array")
-        end
-        for _, text in ipairs(operation.replacement) do
-            if type(text) ~= "string" then
-                error("operation " .. index .. ".replacement entries must be strings")
-            end
-        end
-        local line_count = #simulated
-        local sr, sc, er, ec =
-            operation.start_row, operation.start_col, operation.end_row, operation.end_col
-        if sr > er or (sr == er and sc > ec) or er >= line_count then
-            error("operation " .. index .. " range is out of bounds")
-        end
-        local first = simulated[sr + 1]
-        local last = simulated[er + 1]
-        if sc > #first or ec > #last then
-            error("operation " .. index .. " range is out of bounds")
-        end
-        local updated = {}
-        for row = 1, sr do
-            table.insert(updated, simulated[row])
-        end
-        if #operation.replacement == 0 then
-            local joined = first:sub(1, sc) .. last:sub(ec + 1)
-            table.insert(updated, joined)
-        else
-            table.insert(
-                updated,
-                first:sub(1, sc)
-                    .. operation.replacement[1]
-                    .. (#operation.replacement == 1 and last:sub(ec + 1) or "")
-            )
-            for replacement_index = 2, #operation.replacement - 1 do
-                table.insert(updated, operation.replacement[replacement_index])
-            end
-            if #operation.replacement > 1 then
-                table.insert(
-                    updated,
-                    operation.replacement[#operation.replacement] .. last:sub(ec + 1)
-                )
-            end
-        end
-        for row = er + 2, #simulated do
-            table.insert(updated, simulated[row])
-        end
-        simulated = updated
     end
-    for _, operation in ipairs(request.operations) do
-        vim.api.nvim_buf_set_text(
-            buf,
-            operation.start_row,
-            operation.start_col,
-            operation.end_row,
-            operation.end_col,
-            operation.replacement
-        )
+    if type(operation.replacement) ~= "table" then
+        error("operation.replacement must be an array")
     end
+    for _, text in ipairs(operation.replacement) do
+        if type(text) ~= "string" then
+            error("operation.replacement entries must be strings")
+        end
+    end
+    local line_count = vim.api.nvim_buf_line_count(buf)
+    local sr, sc, er, ec =
+        operation.start_row, operation.start_col, operation.end_row, operation.end_col
+    if sr > er or (sr == er and sc > ec) or er >= line_count then
+        error("operation range is out of bounds")
+    end
+    local lines = vim.api.nvim_buf_get_lines(buf, sr, er + 1, false)
+    local start_line_length, end_line_length = #lines[1], #lines[#lines]
+    if sr == er then
+        if sc > start_line_length or ec > start_line_length then
+            error("operation range is out of bounds")
+        end
+    elseif sc > start_line_length or ec > end_line_length then
+        error("operation range is out of bounds")
+    end
+    vim.api.nvim_buf_set_text(buf, sr, sc, er, ec, operation.replacement)
     return {}
 end
 
