@@ -275,6 +275,120 @@ local function open_file(request)
     return {}
 end
 
+--- Applies ordered text edits to one eligible Neovim buffer without writing it to disk.
+local function edit_buffer(request)
+    local buf
+    if request.path == nil or request.path == vim.NIL then
+        buf = state.prior and state.prior.buf
+        if not buf or not vim.api.nvim_buf_is_valid(buf) or buf == state.buf then
+            error("unnamed target buffer is unavailable")
+        end
+        if vim.api.nvim_buf_get_name(buf) ~= "" or vim.bo[buf].buftype ~= "" then
+            error("unnamed target buffer is not eligible")
+        end
+    else
+        if type(request.path) ~= "string" or request.path == "" then
+            error("path must be a non-empty string")
+        end
+        local path = request.path
+        if not vim.startswith(path, "/") then
+            path = (state.cwd or vim.fn.getcwd()) .. "/" .. path
+        end
+        path = vim.fn.fnamemodify(path, ":p")
+        if vim.fn.filereadable(path) == 0 then
+            error("file does not exist: " .. path)
+        end
+        for _, candidate in ipairs(vim.api.nvim_list_bufs()) do
+            if
+                vim.api.nvim_buf_is_valid(candidate)
+                and candidate ~= state.buf
+                and vim.api.nvim_buf_get_name(candidate) ~= ""
+                and vim.fn.fnamemodify(vim.api.nvim_buf_get_name(candidate), ":p") == path
+            then
+                buf = candidate
+                break
+            end
+        end
+        if not buf then
+            error("target buffer is not open: " .. path)
+        end
+    end
+
+    if type(request.operations) ~= "table" or #request.operations == 0 then
+        error("operations must be a non-empty array")
+    end
+    local simulated = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+    for index, operation in ipairs(request.operations) do
+        if type(operation) ~= "table" then
+            error("operation " .. index .. " must be an object")
+        end
+        for _, key in ipairs({ "start_row", "start_col", "end_row", "end_col" }) do
+            local value = operation[key]
+            if type(value) ~= "number" or value < 0 or value % 1 ~= 0 then
+                error("operation " .. index .. "." .. key .. " must be a non-negative integer")
+            end
+        end
+        if type(operation.replacement) ~= "table" then
+            error("operation " .. index .. ".replacement must be an array")
+        end
+        for _, text in ipairs(operation.replacement) do
+            if type(text) ~= "string" then
+                error("operation " .. index .. ".replacement entries must be strings")
+            end
+        end
+        local line_count = #simulated
+        local sr, sc, er, ec =
+            operation.start_row, operation.start_col, operation.end_row, operation.end_col
+        if sr > er or (sr == er and sc > ec) or er >= line_count then
+            error("operation " .. index .. " range is out of bounds")
+        end
+        local first = simulated[sr + 1]
+        local last = simulated[er + 1]
+        if sc > #first or ec > #last then
+            error("operation " .. index .. " range is out of bounds")
+        end
+        local updated = {}
+        for row = 1, sr do
+            table.insert(updated, simulated[row])
+        end
+        if #operation.replacement == 0 then
+            local joined = first:sub(1, sc) .. last:sub(ec + 1)
+            table.insert(updated, joined)
+        else
+            table.insert(
+                updated,
+                first:sub(1, sc)
+                    .. operation.replacement[1]
+                    .. (#operation.replacement == 1 and last:sub(ec + 1) or "")
+            )
+            for replacement_index = 2, #operation.replacement - 1 do
+                table.insert(updated, operation.replacement[replacement_index])
+            end
+            if #operation.replacement > 1 then
+                table.insert(
+                    updated,
+                    operation.replacement[#operation.replacement] .. last:sub(ec + 1)
+                )
+            end
+        end
+        for row = er + 2, #simulated do
+            table.insert(updated, simulated[row])
+        end
+        simulated = updated
+    end
+    for _, operation in ipairs(request.operations) do
+        vim.api.nvim_buf_set_text(
+            buf,
+            operation.start_row,
+            operation.start_col,
+            operation.end_row,
+            operation.end_col,
+            operation.replacement
+        )
+    end
+    return {}
+end
+
 --- Creates the session socket and dispatches correlated responses to pending callbacks.
 local function create_socket()
     local uv = vim.uv or vim.loop
@@ -336,6 +450,8 @@ local function create_socket()
                                 return list_buffers()
                             elseif message.type == "open_file" then
                                 return open_file(message)
+                            elseif message.type == "edit_buffer" then
+                                return edit_buffer(message)
                             end
                             error("Unsupported request type: " .. message.type)
                         end)

@@ -141,7 +141,9 @@ export function createRequestHandler(
                 block: "block-wise",
             }[selection.selection_type];
             const hint = `[Source: ${source}; lines ${selection.start_line}-${selection.end_line}, columns ${selection.start_col}-${selection.end_col}; ${kind} selection]`;
-            context.ui.pasteToEditor(`${hint}\n${request.text}`);
+            context.ui.pasteToEditor(
+                `${hint}\n${request.text}${request.text.endsWith("\n") ? "" : "\n"}`,
+            );
             return {};
         }
 

@@ -142,6 +142,10 @@ elseif mode:match("^operations") then
             and responses["open-line"] ~= nil
             and responses["open-block"] ~= nil
             and responses["open-missing"] ~= nil
+            and responses["edit-valid"] ~= nil
+            and responses["edit-oob"] ~= nil
+            and responses["edit-partial"] ~= nil
+            and responses["edit-stale-range"] ~= nil
     end, "Neovim did not respond to file-open requests")
     if mode == "operations" and vim.api.nvim_get_current_win() ~= prior_win then
         fail("file did not open in the eligible prior window")
@@ -159,6 +163,18 @@ elseif mode:match("^operations") then
     local cursor = vim.api.nvim_win_get_cursor(0)
     if cursor[1] ~= 2 or cursor[2] ~= 3 then
         fail("requested source interval did not position the cursor")
+    end
+    if
+        not responses["edit-valid"].ok
+        or responses["edit-oob"].ok
+        or responses["edit-partial"].ok
+        or responses["edit-stale-range"].ok
+    then
+        fail("buffer edit success or out-of-bounds error response was incorrect")
+    end
+    local edited = vim.api.nvim_buf_get_lines(vim.api.nvim_get_current_buf(), 0, -1, false)
+    if edited[1] ~= "FIRST line" or edited[2] ~= "addedsecond line" then
+        fail("ordered buffer edits did not produce the expected in-memory text")
     end
     if responses["open-invalid"].ok then
         fail("invalid selection request unexpectedly succeeded")
