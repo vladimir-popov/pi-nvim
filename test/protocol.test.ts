@@ -212,18 +212,16 @@ test("submits prompt and queues follow-up while busy", async () => {
     assert.deepEqual(sent, [["first"], ["next", { deliverAs: "followUp" }]]);
 });
 
-test("submits selected text with a prompt immediately", async () => {
-    const sent: unknown[][] = [];
-    const pi = { sendUserMessage: async (...args: unknown[]) => sent.push(args) };
+test("pastes selected text and prompt without submitting", async () => {
+    const pasted: string[] = [];
+    const pi = { sendUserMessage: async () => assert.fail("selection must not submit") };
     const context = {
-        isIdle: () => true,
-        ui: { getEditorText: () => "", pasteToEditor: () => assert.fail("must not paste") },
+        ui: { getEditorText: () => "", pasteToEditor: (text: string) => pasted.push(text) },
     };
     const handler = createRequestHandler(pi, () => context);
     await handler({
-        type: "submit_selection_prompt",
-        text: "selected",
-        prompt: "Explain this",
+        type: "insert_selection",
+        text: "selected\nExplain this\n",
         selection: {
             buffer_id: 1,
             path: "source.lua",
@@ -235,9 +233,9 @@ test("submits selected text with a prompt immediately", async () => {
             selection_type: "character",
         },
     });
-    assert.deepEqual(sent, [[
-        `[Source: file "source.lua"; lines 1-1, columns 1-8; character-wise selection]\nselected\n\nExplain this`,
-    ]]);
+    assert.deepEqual(pasted, [
+        `[Source: file "source.lua"; lines 1-1, columns 1-8; character-wise selection]\nselected\nExplain this\n`,
+    ]);
 });
 
 test("pastes selection without submitting and reports unavailable editor", async () => {

@@ -519,11 +519,10 @@ local function transfer_selection(prompt)
         notify("failed to start Pi; selection was not transferred", vim.log.levels.ERROR)
         return
     end
-    local request = { type = "insert_selection", text = text, selection = meta }
     if prompt ~= "" then
-        request.type = "submit_selection_prompt"
-        request.prompt = prompt
+        text = text .. "\n" .. prompt .. "\n"
     end
+    local request = { type = "insert_selection", text = text, selection = meta }
     socket_request(request, function(err)
         if err then
             notify(err, vim.log.levels.ERROR)

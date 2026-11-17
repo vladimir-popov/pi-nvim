@@ -111,8 +111,8 @@ Usage                                            *pi-nvim-usage*
 - Select text in Visual mode and run `:Pi` to insert that selection at the
   current cursor position in Pi's input editor without submitting it. Existing
   editor text is preserved.
-- Select text in Visual mode and run `:Pi {prompt}` to submit the selection and
-  prompt together as a message; Pi starts processing immediately.
+- Select text in Visual mode and run `:Pi {prompt}` to insert the selection,
+  prompt, and a trailing newline into Pi's input editor without submitting it.
 - In Pi, run `/open` to choose and open a path mentioned in the latest
   assistant message. Ask Pi to list open buffers or open a file; it can select
   an optional source interval (line and column range, with character-, line-,

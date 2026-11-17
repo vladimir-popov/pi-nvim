@@ -114,8 +114,8 @@ from `pi/pi-nvim.ts`.
 - Run `:Pi <your prompt>` to submit the complete argument as a prompt immediately.
 - Select text in Visual mode and run `:Pi` to insert that selection at the current cursor position
   in Pi's input editor without submitting it. The existing editor text is preserved.
-- Select text in Visual mode and run `:Pi <your prompt>` to submit the selection and prompt together
-  as a message; Pi starts processing immediately.
+- Select text in Visual mode and run `:Pi <your prompt>` to insert the selection followed by the
+  prompt and a newline into Pi's input editor without submitting it.
 - In Pi, run `/open` to choose a path mentioned in the latest assistant message and open it in
   Neovim. Ask Pi to list open buffers or open a file; it can select an optional source interval
   (line and column range, with character-, line-, or block-wise selection).

@@ -97,11 +97,8 @@ export function createRequestHandler(
             return {};
         }
 
-        if (request.type === "insert_selection" || request.type === "submit_selection_prompt") {
+        if (request.type === "insert_selection") {
             if (typeof request.text !== "string") throw new Error("text must be a string");
-            if (request.type === "submit_selection_prompt" && typeof request.prompt !== "string") {
-                throw new Error("prompt must be a string");
-            }
             const rawSelection = request.selection;
             if (!isRecord(rawSelection)) throw new Error("selection metadata is required");
 
@@ -144,14 +141,7 @@ export function createRequestHandler(
                 block: "block-wise",
             }[selection.selection_type];
             const hint = `[Source: ${source}; lines ${selection.start_line}-${selection.end_line}, columns ${selection.start_col}-${selection.end_col}; ${kind} selection]`;
-            const selectedContent = `${hint}\n${request.text}`;
-            if (request.type === "submit_selection_prompt") {
-                const prompt = `${selectedContent}\n\n${request.prompt}`;
-                if (context.isIdle()) await pi.sendUserMessage(prompt);
-                else await pi.sendUserMessage(prompt, { deliverAs: "followUp" });
-            } else {
-                context.ui.pasteToEditor(selectedContent);
-            }
+            context.ui.pasteToEditor(`${hint}\n${request.text}`);
             return {};
         }
 

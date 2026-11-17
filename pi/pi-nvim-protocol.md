@@ -29,31 +29,6 @@ Unmatched responses are ignored. There are no unsolicited messages and no versio
 `prompt` is the complete user prompt. The extension starts a turn immediately when Pi is idle. If Pi
 is busy, it queues the prompt as a follow-up.
 
-### Submit a visual selection with a prompt
-
-```json
-{
-    "id": "req-3",
-    "type": "submit_selection_prompt",
-    "text": "selected text",
-    "prompt": "Explain this",
-    "selection": {
-        "buffer_id": 7,
-        "path": "src/main.lua",
-        "buffer_name": "main.lua",
-        "start_line": 3,
-        "start_col": 1,
-        "end_line": 4,
-        "end_col": 9,
-        "selection_type": "line"
-    }
-}
-```
-
-Pi combines the source hint, selected text, and prompt into one user message and submits it
-immediately. If Pi is busy, the message is queued as a follow-up. This request does not modify the
-input editor.
-
 ### List open buffers
 
 ```json
