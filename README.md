@@ -121,12 +121,23 @@ from `pi/pi-nvim.ts`.
   (line and column range, with character-, line-, or block-wise selection).
 
 The plugin manages one Pi session per Neovim instance and does not attach to Pi terminals started
-independently. Pi starts in Neovim's current working directory. The `list_buffers` tool reports
-listed Neovim buffers; `open_file` opens a requested file and can select a source interval. If the
-extension cannot connect before the configured timeout, the plugin reports the problem and cleans up
-the failed startup resources.
+independently. Pi starts in Neovim's current working directory. If the extension cannot connect
+before the configured timeout, the plugin reports the problem and cleans up the failed startup
+resources.
 
 See [the JSONL protocol documentation](pi/pi-nvim-protocol.md) for the Neovim–Pi message format.
+
+## Tools added to Pi
+
+When the companion extension is loaded, it registers these tools for the Pi agent:
+
+- `list_buffers` — lists the currently listed Neovim buffers and their paths. Use it to identify
+  files already open in the editor.
+- `open_file` — opens a file in Neovim by path. It can optionally place the cursor at a line and
+  select a source interval using character-, line-, or block-wise selection.
+
+The extension also adds the `/open` command, which lets you choose a path mentioned in the latest
+assistant message and open it in Neovim.
 
 ## Automated tests
 
