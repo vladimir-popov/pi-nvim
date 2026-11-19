@@ -61,6 +61,7 @@ Options:
 
   command             "pi"       Pi executable, or a non-empty argument list
                                   such as { "pi", "--verbose" }.
+  window_name         "Pi"       Name assigned to the Pi terminal buffer.
   provider            unset      Optional provider passed to Pi at startup;
                                   requires |model|.
   model               unset      Optional model passed to Pi at startup; may

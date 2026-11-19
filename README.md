@@ -71,6 +71,7 @@ require("pi-nvim").setup({
 | Option               | Default | Description                                                                  |
 | -------------------- | ------- | ---------------------------------------------------------------------------- |
 | `command`            | `"pi"`  | Pi executable, or a non-empty argument list such as `{ "pi", "--verbose" }`. |
+| `window_name`        | `"Pi"`  | Name assigned to the Pi terminal buffer.                                     |
 | `provider`           | unset   | Optional provider passed to Pi at startup. Requires `model`.                 |
 | `model`              | unset   | Optional model passed to Pi at startup. May be set without `provider`.       |
 | `placement`          | `"tab"` | Pi window placement: `"tab"`, `"horizontal"`, `"vertical"`, or `"float"`.    |

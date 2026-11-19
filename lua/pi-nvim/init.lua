@@ -1,6 +1,7 @@
 local M = {}
 local defaults = {
     command = "pi",
+    window_name = "Pi",
     provider = nil,
     model = nil,
     placement = "tab",
@@ -32,6 +33,9 @@ end
 local function valid_config(config)
     if config.provider and not config.model then
         error("provider requires model")
+    end
+    if type(config.window_name) ~= "string" or config.window_name == "" then
+        error("window_name must be a non-empty string")
     end
     if type(config.command) ~= "string" and type(config.command) ~= "table" then
         error("command must be a string or argument list")
@@ -413,7 +417,7 @@ local function start()
     create_socket()
     enter_window()
     state.buf = vim.api.nvim_get_current_buf()
-    vim.api.nvim_buf_set_name(state.buf, "Pi")
+    vim.api.nvim_buf_set_name(state.buf, state.config.window_name)
     vim.bo[state.buf].bufhidden = "hide"
     local env = vim.fn.environ()
     env.PI_NVIM_SOCKET = state.socket_path
@@ -423,7 +427,14 @@ local function start()
         cwd = state.cwd,
         env = env,
         on_exit = function()
-            state.job = nil
+            vim.schedule(function()
+                state.job = nil
+                if state.win and vim.api.nvim_win_is_valid(state.win) then
+                    pcall(vim.api.nvim_win_close, state.win, true)
+                end
+                state.win = nil
+                state.buf = nil
+            end)
             if not state.connected then
                 local message = "Pi exited before its extension connected"
                 notify(message, vim.log.levels.ERROR)
