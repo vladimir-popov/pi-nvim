@@ -214,9 +214,14 @@ test("submits prompt and queues follow-up while busy", async () => {
 
 test("pastes selected text and prompt without submitting", async () => {
     const pasted: string[] = [];
+    const widgets: Array<[string, string[] | undefined]> = [];
     const pi = { sendUserMessage: async () => assert.fail("selection must not submit") };
     const context = {
-        ui: { getEditorText: () => "", pasteToEditor: (text: string) => pasted.push(text) },
+        ui: {
+            getEditorText: () => "",
+            pasteToEditor: (text: string) => pasted.push(text),
+            setWidget: (key: string, content: string[] | undefined) => widgets.push([key, content]),
+        },
     };
     const handler = createRequestHandler(pi, () => context);
     await handler({
@@ -236,6 +241,7 @@ test("pastes selected text and prompt without submitting", async () => {
     assert.deepEqual(pasted, [
         `[Source: file "source.lua"; lines 1-1, columns 1-8; character-wise selection]\nselected\nExplain this\n`,
     ]);
+    assert.deepEqual(widgets, [["pi-nvim:refresh", undefined]]);
 });
 
 test("pastes selection without submitting and reports unavailable editor", async () => {
@@ -244,6 +250,7 @@ test("pastes selection without submitting and reports unavailable editor", async
         ui: {
             getEditorText: () => "draft",
             pasteToEditor: (text: string) => pasted.push(text),
+            setWidget: () => {},
         },
     };
     const pi = {

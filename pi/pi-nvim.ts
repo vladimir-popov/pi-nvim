@@ -29,6 +29,7 @@ interface PiContext {
     ui: {
         getEditorText(): string | undefined;
         pasteToEditor(text: string): void;
+        setWidget(key: string, content: string[] | undefined): void;
     };
 }
 
@@ -142,6 +143,9 @@ export function createRequestHandler(
             }[selection.selection_type];
             const hint = `[Source: ${source}; lines ${selection.start_line}-${selection.end_line}, columns ${selection.start_col}-${selection.end_col}; ${kind} selection]`;
             context.ui.pasteToEditor(`${hint}\n${request.text}`);
+            // setWidget triggers Pi's render path; the public extension UI API has no
+            // requestRender method. Use a namespaced key and immediately remove it.
+            context.ui.setWidget("pi-nvim:refresh", undefined);
             return {};
         }
 
