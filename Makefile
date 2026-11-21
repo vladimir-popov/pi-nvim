@@ -1,5 +1,5 @@
 NODE ?= node
-NVIM ?= nvim
+NVIM_BIN ?= nvim
 
 .PHONY: test check-node test-node test-nvim fmt lua js
 
@@ -37,11 +37,11 @@ test-nvim: check-node
 	@echo "Running Neovim plugin integration tests"
 	@echo
 	@set -e; \
-	PI_NVIM_TEST_ROOT="$(CURDIR)" PI_NVIM_FAKE_MODE=connect $(NVIM) --headless -u NONE -c "lua dofile('test/nvim.lua')" >/dev/null; \
-	PI_NVIM_TEST_ROOT="$(CURDIR)" PI_NVIM_FAKE_MODE=no-connect $(NVIM) --headless -u NONE -c "lua dofile('test/nvim.lua')" >/dev/null; \
-	PI_NVIM_TEST_ROOT="$(CURDIR)" PI_NVIM_FAKE_MODE=horizontal $(NVIM) --headless -u NONE -c "lua dofile('test/nvim.lua')" >/dev/null; \
-	PI_NVIM_TEST_ROOT="$(CURDIR)" PI_NVIM_FAKE_MODE=vertical $(NVIM) --headless -u NONE -c "lua dofile('test/nvim.lua')" >/dev/null; \
-	PI_NVIM_TEST_ROOT="$(CURDIR)" PI_NVIM_FAKE_MODE=operations $(NVIM) --headless -u NONE -c "lua dofile('test/nvim.lua')" >/dev/null; \
-	PI_NVIM_TEST_ROOT="$(CURDIR)" PI_NVIM_FAKE_MODE=operations-fallback $(NVIM) --headless -u NONE -c "lua dofile('test/nvim.lua')" >/dev/null; \
-	PI_NVIM_TEST_ROOT="$(CURDIR)" PI_NVIM_FAKE_MODE=cursor-line $(NVIM) --headless -u NONE -c "lua dofile('test/nvim.lua')" >/dev/null; \
+	PI_NVIM_TEST_ROOT="$(CURDIR)" PI_NVIM_FAKE_MODE=connect $(NVIM_BIN) --headless -u NONE -c "lua dofile('test/nvim.lua')" >/dev/null; \
+	PI_NVIM_TEST_ROOT="$(CURDIR)" PI_NVIM_FAKE_MODE=no-connect $(NVIM_BIN) --headless -u NONE -c "lua dofile('test/nvim.lua')" >/dev/null; \
+	PI_NVIM_TEST_ROOT="$(CURDIR)" PI_NVIM_FAKE_MODE=horizontal $(NVIM_BIN) --headless -u NONE -c "lua dofile('test/nvim.lua')" >/dev/null; \
+	PI_NVIM_TEST_ROOT="$(CURDIR)" PI_NVIM_FAKE_MODE=vertical $(NVIM_BIN) --headless -u NONE -c "lua dofile('test/nvim.lua')" >/dev/null; \
+	PI_NVIM_TEST_ROOT="$(CURDIR)" PI_NVIM_FAKE_MODE=operations $(NVIM_BIN) --headless -u NONE -c "lua dofile('test/nvim.lua')" >/dev/null; \
+	PI_NVIM_TEST_ROOT="$(CURDIR)" PI_NVIM_FAKE_MODE=operations-fallback $(NVIM_BIN) --headless -u NONE -c "lua dofile('test/nvim.lua')" >/dev/null; \
+	PI_NVIM_TEST_ROOT="$(CURDIR)" PI_NVIM_FAKE_MODE=cursor-line $(NVIM_BIN) --headless -u NONE -c "lua dofile('test/nvim.lua')" >/dev/null; \
 	echo "Neovim plugin integration tests passed"
